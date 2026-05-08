@@ -1,0 +1,52 @@
+# Code Owners
+
+This file defines who owns and reviews different parts of the codebase.
+
+## Default Owners
+
+* @default-owner - Default owner for all code without specific owners
+
+## Security-Sensitive Code
+
+These files require security review before merging:
+
+* lib/utils/encryption.dart     @security-reviewer
+* lib/utils/rsa_helper.dart   @security-reviewer
+* lib/services/auth_service.dart  @security-review
+* lib/services/key_backup_service.dart @security-reviewer
+* firestore.rules            @security-reviewer
+
+## Infrastructure
+
+* .github/workflows/ci.yml   @infra-owner
+* pubspec.yaml               @infra-owner
+* firebase.json             @infra-owner
+
+## Screens (UI)
+
+* lib/screens/chat_screen.dart   @ui-reviewer
+* lib/screens/chat_list_screen.dart @ui-reviewer
+
+## Services
+
+* lib/services/chat_service.dart       @backend-reviewer
+* lib/services/chat_list_service.dart  @backend-reviewer
+* lib/services/game_service.dart       @backend-reviewer
+* lib/services/session_manager.dart   @backend-reviewer
+
+## Review Requirements
+
+| Change Type | Required Reviewers |
+|------------|-------------------|
+| Security fixes | At least 1 security-reviewer |
+| Encryption changes | All security-reviewers |
+| Firebase rules | At least 1 security-reviewer |
+| UI changes | At least 1 ui-reviewer |
+| Infrastructure | At least 1 infra-owner |
+| Bug fixes | 1 peer review |
+
+## Escalation
+
+If a PR is blocked without review for:
+- 3 days: Ping @default-owner
+- 7 days: Escalate to team lead

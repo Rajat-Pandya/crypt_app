@@ -1,0 +1,123 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+env:
+  flutter_version: '3.11.0'
+  java_version: '17'
+
+jobs:
+  analyze:
+    name: Flutter Analyze
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.flutter_version }}
+          channel: stable
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Run Flutter analyzer
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings
+
+  test:
+    name: Widget Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.flutter_version }}
+          channel: stable
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Run tests
+        run: flutter test
+
+  build-android:
+    name: Build Android APK
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.flutter_version }}
+          channel: stable
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.java_version }}
+          distribution:temurin
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Build debug APK
+        run: flutter build apk --debug
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-debug.apk
+          path: build/app/outputs/flutter-apk/app-debug.apk
+          retention-days: 7
+
+  build-ios:
+    name: Build iOS Simulator
+    runs-on: macos-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.flutter_version }}
+          channel: stable
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Build for iOS simulator
+        run: flutter build ios --simulator --no-codesign
+        shell: /bin/bash
+
+  firestore-rules:
+    name: Firestore Rules Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Firebase CLI
+        uses: FirebaseExtended/action-helper@v1
+        with:
+          firebase-tools: 'latest'
+
+      - name: Verify Firestore rules
+        run: |
+          if [ -f "firestore.rules" ]; then
+            echo "Firestore rules file exists"
+          else
+            echo "Missing firestore.rules"
+            exit 1
+          fi

@@ -1,0 +1,91 @@
+# Miscellaneous
+*.class
+*.log
+*.pyc
+*.swp
+.DS_Store
+.atom/
+.build/
+.buildlog/
+.history
+.svn/
+.swiftpm/
+migrate_working_dir/
+
+# IntelliJ related
+*.iml
+*.ipr
+*.iws
+.idea/
+
+# VS Code
+.vscode/
+
+# Flutter/Dart/Pub related
+**/doc/api/
+**/ios/Flutter/.last_build_id
+.dart_tool/
+.flutter-plugins-dependencies
+.flutter-plugins
+.pub-cache/
+.pub/
+/build/
+/coverage/
+
+# Symbolication related
+app.*.symbols
+
+# Obfuscation related
+app.*.map.json
+
+# Android Studio
+/android/app/debug
+/android/app/profile
+/android/app/release
+
+# ──────────────────────────────────────────────────────────────────────────────
+# CRYPT APP - Sensitive Files
+# ──────────────────────────────────────────────────────────────────────────────┐
+#                                                                         │
+# ⚠️  DO NOT commit these files to version control                      │
+#                                                                         │
+# ────────────────────────────────────────────────────────────────────────┘
+
+# Firebase configuration - CONTAINS API KEYS
+# Replace with your own google-services.json before building
+android/app/google-services.json
+
+# Build outputs
+*.apk
+*.aab
+*.ipa
+
+# Local configuration (secrets)
+local.properties
+*.keystore
+jks/
+
+# OS generated files
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Firebase Emulators (if used locally)
+.firebase/
+firestore-debug.log
+firebase-debug.log
+ui-debug.log
+
+# Cloud Functions (node_modules - install with npm ci)
+functions/node_modules/
+functions/package-lock.json
+
+# Skill/Agent configurations (internal)
+.agents/
+skills-lock.json
+
+# Debug files
+*.pdb
+*.exe
+*.dll
