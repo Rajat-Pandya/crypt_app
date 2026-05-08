@@ -81,7 +81,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
   int _messageListRebuildCount = 0;
   int _decryptKeyErrorCount = 0;
-  DateTime? _lastDecryptRebuildTime;
   Set<String> _processedDecryptDocIds = {};
 
   String _receiverName = "User";
@@ -91,11 +90,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   final AudioPlayer _audioPlayer = AudioPlayer();
 
   Stream<QuerySnapshot>? _messageStream;
-  List<QueryDocumentSnapshot> _allLoadedDocs = [];
-  bool _hasMoreMessages = true;
-  DocumentSnapshot? _lastDoc;
-  bool _isLoadingMore = false;
-  static const int _pageSize = 50;
 
   int _previousMessageCount = -1;
   bool _isScreenActive = true;
