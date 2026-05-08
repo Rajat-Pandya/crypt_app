@@ -56,6 +56,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   // ── Offline queue ─────────────────────────────────────────────────────
   bool _isOnline = true;
   StreamSubscription<List<ConnectivityResult>>? _connectivitySub;
+  String? _errorMessage;
 
   static const _kDecryptPending = '\x00PENDING\x00';
   static const _kDecryptFailed = '\x00FAILED\x00';
@@ -415,6 +416,14 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     }
   }
 
+  void _showTempError(String message, {Duration duration = const Duration(seconds: 4)}) {
+    if (!mounted) return;
+    setState(() => _errorMessage = message);
+    Future.delayed(duration, () {
+      if (mounted) setState(() => _errorMessage = null);
+    });
+  }
+
   void _showKeyRotationBanner() {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -642,6 +651,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       if (!_decryptCache.containsKey(docId)) {
         _decryptCache[docId] = _kDecryptKeyError;
         _decryptKeyErrorCount++;
+        if (_decryptKeyErrorCount == 1) {
+          _showTempError('Encryption key mismatch. Some messages may not decrypt.');
+        }
       }
       return _kDecryptKeyError;
     }
@@ -1055,6 +1067,30 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       appBar: _buildAppBar(roomId, colors),
       body: Column(
         children: [
+          if (_errorMessage != null)
+            MaterialBanner(
+              content: Text(_errorMessage!, style: const TextStyle(color: Colors.white)),
+              backgroundColor: Colors.red.shade700,
+              leading: const Icon(Icons.error_outline, color: Colors.white),
+              actions: [
+                TextButton(
+                  onPressed: () => setState(() => _errorMessage = null),
+                  child: const Text('DISMISS', style: TextStyle(color: Colors.white)),
+                ),
+              ],
+            ),
+          if (!_isOnline)
+            MaterialBanner(
+              content: const Text('You are offline. Messages will be sent when connected.', style: TextStyle(color: Colors.white)),
+              backgroundColor: Colors.orange.shade700,
+              leading: const Icon(Icons.wifi_off, color: Colors.white),
+              actions: [
+                TextButton(
+                  onPressed: () => setState(() {}),
+                  child: const Text('DISMISS', style: TextStyle(color: Colors.white)),
+                ),
+              ],
+            ),
           Expanded(
             child: StreamBuilder<QuerySnapshot>(
               stream: _messageStream ?? const Stream.empty(),
