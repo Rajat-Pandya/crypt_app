@@ -90,6 +90,11 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   final AudioPlayer _audioPlayer = AudioPlayer();
 
   Stream<QuerySnapshot>? _messageStream;
+  List<QueryDocumentSnapshot> _allLoadedDocs = [];
+  bool _hasMoreMessages = true;
+  DocumentSnapshot? _lastDoc;
+  bool _isLoadingMore = false;
+  static const int _pageSize = 50;
 
   int _previousMessageCount = -1;
   bool _isScreenActive = true;
@@ -397,7 +402,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                 .doc(chatRoomId)
                 .collection("messages")
                 .orderBy("timestamp")
-                .limitToLast(50)
+                .limitToLast(100)
                 .snapshots();
             _dbg('_loadKeys: message stream initialized');
           }
@@ -799,25 +804,25 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     }
   }
 
-void _scheduleDecryptRebuild() {
+  void _scheduleDecryptRebuild() {
     if (!mounted) return;
     setState(() {});
   }
 
   void _preDecryptMessages(List<DocumentSnapshot> docs) {
     final currentDocIds = docs.map((d) => d.id).toSet();
-    
+
     final newDocIds = currentDocIds.difference(_processedDecryptDocIds);
     if (newDocIds.isEmpty) {
       return;
     }
-    
+
     _processedDecryptDocIds = currentDocIds;
-    
+
     int pending = 0;
     for (final doc in docs) {
       if (!newDocIds.contains(doc.id)) continue;
-      
+
       final cached = _decryptCache[doc.id];
       if (cached != null && cached != _kDecryptPending) {
         if (cached == _kDecryptKeyError) {
@@ -1409,9 +1414,17 @@ void _scheduleDecryptRebuild() {
                       onEmojiSelected: (category, emoji) {
                         final text = controller.text;
                         final selection = controller.selection;
-                        final start = selection.baseOffset >= 0 ? selection.baseOffset : text.length;
-                        final end = selection.extentOffset >= 0 ? selection.extentOffset : text.length;
-                        final newText = text.replaceRange(start, end, emoji.emoji);
+                        final start = selection.baseOffset >= 0
+                            ? selection.baseOffset
+                            : text.length;
+                        final end = selection.extentOffset >= 0
+                            ? selection.extentOffset
+                            : text.length;
+                        final newText = text.replaceRange(
+                          start,
+                          end,
+                          emoji.emoji,
+                        );
                         controller.text = newText;
                         controller.selection = TextSelection.collapsed(
                           offset: start + emoji.emoji.length,
