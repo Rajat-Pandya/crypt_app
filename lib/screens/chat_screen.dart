@@ -81,6 +81,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   int _messageListRebuildCount = 0;
   int _decryptKeyErrorCount = 0;
   DateTime? _lastDecryptRebuildTime;
+  Set<String> _processedDecryptDocIds = {};
 
   String _receiverName = "User";
 
@@ -798,22 +799,25 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     }
   }
 
-  void _scheduleDecryptRebuild() {
+void _scheduleDecryptRebuild() {
     if (!mounted) return;
-
-    final now = DateTime.now();
-    if (_lastDecryptRebuildTime != null &&
-        now.difference(_lastDecryptRebuildTime!).inMilliseconds < 100) {
-      return;
-    }
-
-_lastDecryptRebuildTime = now;
     setState(() {});
   }
 
   void _preDecryptMessages(List<DocumentSnapshot> docs) {
+    final currentDocIds = docs.map((d) => d.id).toSet();
+    
+    final newDocIds = currentDocIds.difference(_processedDecryptDocIds);
+    if (newDocIds.isEmpty) {
+      return;
+    }
+    
+    _processedDecryptDocIds = currentDocIds;
+    
     int pending = 0;
     for (final doc in docs) {
+      if (!newDocIds.contains(doc.id)) continue;
+      
       final cached = _decryptCache[doc.id];
       if (cached != null && cached != _kDecryptPending) {
         if (cached == _kDecryptKeyError) {
@@ -832,7 +836,7 @@ _lastDecryptRebuildTime = now;
     }
     if (pending > 0)
       _dbg(
-        '_preDecryptMessages: kicked off $pending background decrypts (RSA+AES on background isolate)',
+        '_preDecryptMessages: kicked off $pending NEW background decrypts (skipping already-processed)',
       );
   }
 
@@ -1154,8 +1158,12 @@ _lastDecryptRebuildTime = now;
                       }
                     }
 
+                    final cachedText = _decryptCache[docs[index].id];
+                    final cacheStatus = cachedText == _kDecryptPending
+                        ? 'pending'
+                        : (cachedText == null ? 'empty' : 'ready');
                     return KeyedSubtree(
-                      key: ValueKey(docs[index].id),
+                      key: ValueKey('${docs[index].id}_$cacheStatus'),
                       child: Column(
                         children: [
                           if (showDate)
