@@ -46,7 +46,7 @@ class _ChatListScreenState extends State<ChatListScreen>
 
   // ────────────────────────────────────────────────────────────────────────
 
-  String getRoomId(String u1, String u2) => ChatListService.getRoomId(u1, u2);
+  String getRoomId(String u1, String u2) => ChatService.getRoomId(u1, u2);
 
   // ── Lifecycle ──────────────────────────────────────────────────────────
 

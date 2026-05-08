@@ -132,9 +132,53 @@ void main() async {
 
 // ── App ────────────────────────────────────────────────────────────────────
 
-class CryptApp extends StatelessWidget {
+class CryptApp extends StatefulWidget {
   const CryptApp({super.key});
 
+  @override
+  State<CryptApp> createState() => _CryptAppState();
+}
+
+class _CryptAppState extends State<CryptApp> {
+  bool _showSplash = true;
+
+  @override
+  void initState() {
+    super.initState();
+    Future.delayed(const Duration(milliseconds: 800), () {
+      if (mounted) setState(() => _showSplash = false);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_showSplash) {
+      return MaterialApp(
+        debugShowCheckedModeBanner: false,
+        theme: ThemeData(colorSchemeSeed: const Color(0xFF3B82F6)),
+        home: Scaffold(
+          backgroundColor: const Color(0xFF3B82F6),
+          body: Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(Icons.lock_outline, size: 80, color: Colors.white),
+                const SizedBox(height: 24),
+                const Text('Crypt', style: TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.bold, letterSpacing: 2)),
+                const SizedBox(height: 48),
+                const CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    return _CryptAppContent();
+  }
+}
+
+class _CryptAppContent extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ValueListenableBuilder<ThemeMode>(
