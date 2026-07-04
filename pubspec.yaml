@@ -12,13 +12,13 @@ dependencies:
     sdk: flutter
 
   # ── Firebase ──
-  firebase_core: ^2.30.0
-  cloud_firestore: ^4.17.0
-  firebase_auth: ^4.19.0
-  firebase_messaging: ^14.9.0
-  firebase_database: ^10.0.0
-  firebase_app_check: ^0.2.1+18
-  firebase_crashlytics: ^3.5.0
+  firebase_core: ^4.11.0
+  cloud_firestore: ^6.6.0
+  firebase_auth: ^6.5.4
+  firebase_messaging: ^16.4.1
+  firebase_database: ^12.4.4
+  firebase_app_check: ^0.4.5
+  firebase_crashlytics: ^5.2.4
 
   # ── Notifications ──
   flutter_local_notifications: ^17.0.0
@@ -49,10 +49,10 @@ dependencies:
   connectivity_plus: ^6.0.0
 
   # ── Emoji Picker ──
-  emoji_picker_flutter: ^2.0.0
+  emoji_picker_flutter: ^4.4.0
 
 dev_dependencies:
-  flutter_launcher_icons: ^0.13.1
+  flutter_launcher_icons: ^0.14.4
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
