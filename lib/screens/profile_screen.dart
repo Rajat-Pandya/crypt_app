@@ -1,6 +1,8 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import '../services/profile_photo_service.dart';
 import '../utils/avatar_utils.dart';
 import '../utils/input_validator.dart';
 import '../main.dart';
@@ -21,8 +23,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   bool _isLoading = true;
   bool _isSaving = false;
-  String _currentName = "";
-  String _displayEmail = "";
+  String _currentName = '';
+  String _displayEmail = '';
 
   String get displayUserId => widget.userId ?? currentUser.uid;
 
@@ -44,16 +46,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
   // ── Firestore ──────────────────────────────────────────────
 
   Future<void> _loadProfile() async {
-    debugPrint('[Profile] _loadProfile: START, userId=${displayUserId}');
+    debugPrint('[Profile] _loadProfile: START, userId=$displayUserId');
     try {
       final doc = await FirebaseFirestore.instance
-          .collection("users")
+          .collection('users')
           .doc(displayUserId)
           .get();
 
       if (doc.exists && doc.data() != null) {
         final data = doc.data()!;
-        final name = data["name"] as String? ?? "";
+        final name = data['name'] as String? ?? '';
 
         // ── Fix 3: load email once here instead of streaming ──
         // Email does not change during a profile view session.
@@ -64,7 +66,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
         // but should not be visible to contacts.
         // Own profile shows email for account management.
         // Other profiles show nothing — name is sufficient.
-        final email = isOwnProfile ? (data["email"] as String? ?? "") : "";
+        // Fix: Use Firestore email if available, otherwise fall back to Firebase Auth
+        final firestoreEmail = data['email'] as String?;
+        final authEmail = FirebaseAuth.instance.currentUser?.email ?? '';
+        final email = isOwnProfile 
+            ? (firestoreEmail?.isNotEmpty == true ? firestoreEmail! : authEmail) 
+            : '';
 
         setState(() {
           _currentName = name;
@@ -89,7 +96,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     if (newName == _currentName) {
       debugPrint('[Profile] _saveName: name unchanged, skipping');
-      _showSnack("Name is already up to date", Colors.orange);
+      _showSnack('Name is already up to date', Colors.orange);
       return;
     }
 
@@ -98,21 +105,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     try {
       await FirebaseFirestore.instance
-          .collection("users")
+          .collection('users')
           .doc(currentUser.uid)
-          .set({"name": newName}, SetOptions(merge: true));
+          .set({'name': newName}, SetOptions(merge: true));
 
       setState(() {
         _currentName = newName;
         _isSaving = false;
       });
 
-      _showSnack("Profile updated successfully!", Colors.green);
+      _showSnack('Profile updated successfully!', Colors.green);
       debugPrint('[Profile] _saveName: SUCCESS');
     } catch (e) {
       debugPrint('[Profile] _saveName: ERROR ${e.runtimeType}');
       setState(() => _isSaving = false);
-      _showSnack("Failed to save. Please try again.", Colors.red);
+      _showSnack('Failed to save. Please try again.', Colors.red);
     }
   }
 
@@ -144,7 +151,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           onPressed: () => Navigator.pop(context),
         ),
         title: Text(
-          isOwnProfile ? "My Profile" : "Profile",
+          isOwnProfile ? 'My Profile' : 'Profile',
           style: TextStyle(
             color: colors.primaryText,
             fontWeight: FontWeight.w600,
@@ -212,25 +219,154 @@ class _ProfileScreenState extends State<ProfileScreen> {
           alignment: Alignment.bottomRight,
           children: [
             _avatarCircle(displayName, colors),
-            Container(
-              width: 32,
-              height: 32,
-              decoration: BoxDecoration(
-                color: colors.cardBg,
-                shape: BoxShape.circle,
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.15),
-                    blurRadius: 6,
-                  ),
-                ],
+            GestureDetector(
+              onTap: () => _onEditPhotoTapped(context),
+              child: Container(
+                width: 32,
+                height: 32,
+                decoration: BoxDecoration(
+                  color: colors.cardBg,
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.15),
+                      blurRadius: 6,
+                    ),
+                  ],
+                ),
+                child: Icon(Icons.edit, size: 16, color: colors.accent),
               ),
-              child: Icon(Icons.edit, size: 16, color: colors.accent),
             ),
           ],
         );
       },
     );
+  }
+
+  /// Handle edit photo tap - show photo options
+  void _onEditPhotoTapped(BuildContext context) {
+    ProfilePhotoService.showPhotoOptions(
+      context,
+      onCamera: () => _uploadPhotoFromCamera(),
+      onGallery: () => _uploadPhotoFromGallery(),
+      onRemove: () => _removePhoto(),
+    );
+  }
+
+  /// Upload photo from camera
+  Future<void> _uploadPhotoFromCamera() async {
+    final service = ProfilePhotoService();
+    
+    setState(() => _isLoading = true);
+    
+    try {
+      // Pick image from camera
+      final imageFile = await service.pickFromCamera();
+      if (imageFile == null) {
+        setState(() => _isLoading = false);
+        return;
+      }
+      
+      // Upload the photo
+      final photoUrl = await service.uploadProfilePhoto(imageFile);
+      
+      setState(() => _isLoading = false);
+      
+      if (photoUrl != null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Profile photo updated!')),
+          );
+        }
+      }
+    } catch (e) {
+      setState(() => _isLoading = false);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to upload photo: $e')),
+        );
+      }
+    }
+  }
+
+  /// Upload photo from gallery
+  Future<void> _uploadPhotoFromGallery() async {
+    final service = ProfilePhotoService();
+    
+    setState(() => _isLoading = true);
+    
+    try {
+      // Pick image from gallery
+      final imageFile = await service.pickFromGallery();
+      if (imageFile == null) {
+        setState(() => _isLoading = false);
+        return;
+      }
+      
+      // Upload the photo
+      final photoUrl = await service.uploadProfilePhoto(imageFile);
+      
+      setState(() => _isLoading = false);
+      
+      if (photoUrl != null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Profile photo updated!')),
+          );
+        }
+      }
+    } catch (e) {
+      setState(() => _isLoading = false);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to upload photo: $e')),
+        );
+      }
+    }
+  }
+
+  /// Remove profile photo
+  Future<void> _removePhoto() async {
+    // Show confirmation dialog
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Remove Photo'),
+        content: const Text('Are you sure you want to remove your profile photo?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('Remove'),
+          ),
+        ],
+      ),
+    );
+    
+    if (confirm == true) {
+      setState(() => _isLoading = true);
+      
+      try {
+        await ProfilePhotoService().removeProfilePhoto();
+        setState(() => _isLoading = false);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Profile photo removed')),
+          );
+        }
+      } catch (e) {
+        setState(() => _isLoading = false);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Failed to remove photo: $e')),
+          );
+        }
+      }
+    }
   }
 
   /// Shared avatar circle used for both own and other profiles.
@@ -284,8 +420,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
           const SizedBox(width: 10),
           Expanded(
             child: Text(
-              "Your name is visible to everyone you chat with. "
-              "Initials are generated automatically.",
+              'Your name is visible to everyone you chat with. '
+              'Initials are generated automatically.',
               style: TextStyle(fontSize: 13, color: colors.secondaryText),
             ),
           ),
@@ -301,7 +437,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          "Display Name",
+          'Display Name',
           style: TextStyle(
             fontSize: 13,
             fontWeight: FontWeight.w600,
@@ -319,7 +455,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             color: colors.primaryText,
           ),
           decoration: InputDecoration(
-            hintText: "Enter your name",
+            hintText: 'Enter your name',
             hintStyle: TextStyle(color: colors.hintText),
             prefixIcon: Icon(Icons.person_outline, color: colors.accent),
             filled: true,
@@ -363,7 +499,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          "Display Name",
+          'Display Name',
           style: TextStyle(
             fontSize: 13,
             fontWeight: FontWeight.w600,
@@ -386,7 +522,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               const SizedBox(width: 12),
               Expanded(
                 child: Text(
-                  _currentName.isEmpty ? "No name set" : _currentName,
+                  _currentName.isEmpty ? 'No name set' : _currentName,
                   style: TextStyle(
                     fontSize: 15,
                     color: colors.primaryText,
@@ -414,7 +550,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          "Email",
+          'Email',
           style: TextStyle(
             fontSize: 13,
             fontWeight: FontWeight.w600,
@@ -437,7 +573,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               const SizedBox(width: 12),
               Expanded(
                 child: Text(
-                  _displayEmail.isEmpty ? "No email" : _displayEmail,
+                  _displayEmail.isEmpty ? 'No email' : _displayEmail,
                   style: TextStyle(fontSize: 15, color: colors.secondaryText),
                 ),
               ),
@@ -460,7 +596,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       const Icon(Icons.verified, size: 12, color: Colors.green),
                       const SizedBox(width: 4),
                       Text(
-                        "Verified",
+                        'Verified',
                         style: TextStyle(
                           fontSize: 11,
                           color: Colors.green.shade400,
@@ -506,7 +642,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 )
               : const Icon(Icons.save_outlined),
           label: Text(
-            _isSaving ? "Saving..." : "Save Changes",
+            _isSaving ? 'Saving...' : 'Save Changes',
             style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
           ),
           style: ElevatedButton.styleFrom(

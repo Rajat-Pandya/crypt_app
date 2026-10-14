@@ -1,9 +1,9 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 import '../main.dart';
 import '../services/auth_service.dart';
-import '../utils/input_validator.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -43,14 +43,6 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  /// 🔴 FIX Bug 2 — Shows key mismatch dialog when encryption keys conflict.
-  /// Previously: onMismatch was never passed to AuthService.login()
-  ///             Conflict was detected but user was never informed
-  ///             All messages showed 🔒 with no explanation
-  ///
-  /// Now: Dialog blocks navigation until user makes an explicit choice.
-  ///      resolveKeyMismatch() is called with their decision.
-  ///      User understands the tradeoff before proceeding.
   Future<void> _handleKeyMismatch(KeyMismatchDetail detail) async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null || !mounted) return;
@@ -106,7 +98,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const Text(
-                      '📱 Use this device\'s key',
+                      'Use this device\'s key',
                       style: TextStyle(
                         color: Colors.blue,
                         fontWeight: FontWeight.w600,
@@ -140,7 +132,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const Text(
-                      '🔄 Keep the registered key',
+                      'Keep the registered key',
                       style: TextStyle(
                         color: Colors.orange,
                         fontWeight: FontWeight.w600,
@@ -149,8 +141,8 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      'Messages from the other device stay readable. '
-                      'Delete the local key and restore from backup.',
+                      'This device\'s messages may not be readable. '
+                      'Requires re-login on other device to sync.',
                       style: TextStyle(
                         color: colors.secondaryText,
                         fontSize: 12,
@@ -163,92 +155,78 @@ class _LoginScreenState extends State<LoginScreen> {
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text(
-                'Keep registered',
-                style: TextStyle(color: Colors.orange),
-              ),
-            ),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.blue,
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
-                ),
-              ),
               onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Use this device'),
+              style: TextButton.styleFrom(
+                foregroundColor: Colors.blue,
+              ),
+              child: const Text('Use This Device'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              style: TextButton.styleFrom(
+                foregroundColor: Colors.orange,
+              ),
+              child: const Text('Keep Registered'),
             ),
           ],
         );
       },
     );
 
-    final resolvedKeepLocal = keepLocal ?? false;
+    if (keepLocal == null) return;
 
-    _dbg('key mismatch resolved: keepLocal=$resolvedKeepLocal');
+    _dbg('key mismatch dialog: user chose ${keepLocal ? 'local' : 'remote'}');
 
     await AuthService.resolveKeyMismatch(
       user: user,
       detail: detail,
-      keepLocal: resolvedKeepLocal,
-      password: passwordController.text
-          .trim(), // BUG 3 FIX: enables immediate restore
+      keepLocal: keepLocal,
     );
-
-    if (mounted) {
-      _snack(
-        resolvedKeepLocal
-            ? '🔑 This device\'s key is now active'
-            : '🔄 Registered key kept — restoring from backup on next login',
-        resolvedKeepLocal ? Colors.blue : Colors.orange,
-        duration: const Duration(seconds: 5),
-      );
-    }
   }
 
   Future<void> login() async {
     if (isLoading) return;
 
     final email = emailController.text.trim();
-    final pass = passwordController.text.trim();
+    final password = passwordController.text;
 
-    final emailErr = InputValidator.validateEmail(email);
-    if (emailErr != null) {
-      _snack(emailErr, Colors.red);
-      return;
-    }
-    if (pass.isEmpty) {
-      _snack("Password cannot be empty", Colors.red);
+    if (email.isEmpty || password.isEmpty) {
+      _snack('Please enter both email and password', Colors.orange);
       return;
     }
 
     setState(() => isLoading = true);
 
     try {
-      await AuthService.login(
-        email,
-        pass,
-        onMismatch: _handleKeyMismatch,
-      );
+      final user = await AuthService.login(email, password);
 
       if (!mounted) return;
 
-      _dbg('login: successful');
+      if (user == null) {
+        _snack('Login failed', Colors.red);
+        setState(() => isLoading = false);
+        return;
+      }
+
+      if (!user.emailVerified) {
+        _snack(
+          'Please verify your email first. Check your inbox.',
+          Colors.orange,
+          duration: const Duration(seconds: 5),
+        );
+        setState(() => isLoading = false);
+        return;
+      }
+
+      _snack('Welcome back!', Colors.green);
     } on FirebaseAuthException catch (e) {
-      _dbg('login: FirebaseAuthException code=${e.code}');
-
       if (!mounted) return;
-
-      final message = _mapFirebaseLoginError(e.code);
-      _snack(message, Colors.red);
+      _snack(_mapFirebaseLoginError(e.code), Colors.red);
+      setState(() => isLoading = false);
     } catch (e) {
-      _dbg('login: unexpected error — ${e.runtimeType}');
       if (!mounted) return;
-      _snack("Something went wrong. Please try again.", Colors.red);
-    } finally {
-      if (mounted) setState(() => isLoading = false);
+      _snack('Login failed: ${e.runtimeType}', Colors.red);
+      setState(() => isLoading = false);
     }
   }
 
@@ -256,70 +234,79 @@ class _LoginScreenState extends State<LoginScreen> {
     if (isLoading) return;
 
     final email = emailController.text.trim();
-    final pass = passwordController.text.trim();
+    final password = passwordController.text;
 
-    final emailErr = InputValidator.validateEmail(email);
-    if (emailErr != null) {
-      _snack(emailErr, Colors.red);
+    if (email.isEmpty || password.isEmpty) {
+      _snack('Please enter both email and password', Colors.orange);
       return;
     }
-    if (pass.length < 6) {
-      _snack("Password must be at least 6 characters", Colors.red);
+
+    if (password.length < 6) {
+      _snack('Password must be at least 6 characters', Colors.orange);
       return;
     }
 
     setState(() => isLoading = true);
 
     try {
-      await AuthService.register(email, pass);
+      final user = await AuthService.register(email, password);
 
       if (!mounted) return;
 
-      _dbg('register: account created successfully');
-
-      _snack(
-        "✅ Account created! Check your email for a verification link.",
-        Colors.green,
-        duration: const Duration(seconds: 6),
-      );
-
-      setState(() => showRegistration = false);
-      emailController.clear();
-      passwordController.clear();
+      if (user != null) {
+        _snack(
+          'Account created! Please check your email to verify.',
+          Colors.green,
+          duration: const Duration(seconds: 5),
+        );
+        setState(() {
+          showRegistration = false;
+          isLoading = false;
+        });
+      } else {
+        _snack('Registration failed', Colors.red);
+        setState(() => isLoading = false);
+      }
     } on FirebaseAuthException catch (e) {
-      _dbg('register: FirebaseAuthException code=${e.code}');
       if (!mounted) return;
-      final msg = _mapFirebaseRegisterError(e.code);
-      _snack(msg, Colors.red);
+      _snack(_mapFirebaseRegisterError(e.code), Colors.red);
+      setState(() => isLoading = false);
     } catch (e) {
-      _dbg('register: unexpected error — ${e.runtimeType}');
       if (!mounted) return;
-      _snack("Something went wrong. Please try again.", Colors.red);
-    } finally {
-      if (mounted) setState(() => isLoading = false);
+      _snack('Registration failed', Colors.red);
+      setState(() => isLoading = false);
     }
   }
 
   String _mapFirebaseLoginError(String code) {
     return switch (code) {
-      'user-not-found' => '❌ No account found with that email',
-      'wrong-password' => '❌ Incorrect password',
-      'invalid-email' => '❌ Invalid email address',
-      'too-many-requests' => '⏳ Too many attempts. Please try again later.',
-      'user-disabled' => '❌ This account has been disabled',
-      'invalid-credential' => '❌ Incorrect email or password',
-      _ => '❌ Login failed. Please try again.',
+      'user-not-found' => 'No account found with that email',
+      'wrong-password' => 'Incorrect password',
+      'invalid-email' => 'Invalid email address',
+      'too-many-requests' => 'Too many attempts. Please try again later.',
+      'user-disabled' => 'This account has been disabled',
+      'invalid-credential' => 'Incorrect email or password',
+      _ => 'Login failed. Please try again.',
     };
   }
 
   String _mapFirebaseRegisterError(String code) {
     return switch (code) {
-      'email-already-in-use' => '❌ An account already exists with that email',
-      'weak-password' => '❌ Password too weak (minimum 6 characters)',
-      'invalid-email' => '❌ Invalid email format',
-      'operation-not-allowed' => '❌ Registration is currently disabled',
-      _ => '❌ Registration failed. Please try again.',
+      'email-already-in-use' => 'An account already exists with that email',
+      'weak-password' => 'Password too weak (minimum 6 characters)',
+      'invalid-email' => 'Invalid email format',
+      'operation-not-allowed' => 'Registration is currently disabled',
+      _ => 'Registration failed. Please try again.',
     };
+  }
+
+  /// Shows the forgot password dialog with email input.
+  void _showForgotPasswordDialog() {
+    _dbg('[AUTH] Showing forgot password dialog');
+    showDialog(
+      context: context,
+      builder: (context) => const ForgotPasswordDialog(),
+    );
   }
 
   @override
@@ -339,7 +326,7 @@ class _LoginScreenState extends State<LoginScreen> {
         backgroundColor: colors.appBarBg,
         elevation: 0,
         title: Text(
-          showRegistration ? "Create Account 🔐" : "Welcome 🔐",
+          showRegistration ? 'Create Account' : 'Welcome',
           style: TextStyle(
             color: colors.primaryText,
             fontWeight: FontWeight.w600,
@@ -376,7 +363,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 style: TextStyle(color: colors.primaryText),
                 keyboardType: TextInputType.emailAddress,
                 decoration: InputDecoration(
-                  labelText: "Email",
+                  labelText: 'Email',
                   labelStyle: TextStyle(color: colors.secondaryText),
                   prefixIcon: Icon(
                     Icons.email_outlined,
@@ -403,7 +390,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 style: TextStyle(color: colors.primaryText),
                 obscureText: true,
                 decoration: InputDecoration(
-                  labelText: "Password",
+                  labelText: 'Password',
                   labelStyle: TextStyle(color: colors.secondaryText),
                   prefixIcon: Icon(
                     Icons.lock_outline,
@@ -422,7 +409,33 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                 ),
               ),
-              const SizedBox(height: 40),
+              const SizedBox(height: 8),
+
+              // Forgot Password Button
+              if (!showRegistration)
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton.icon(
+                    onPressed: isLoading ? null : _showForgotPasswordDialog,
+                    icon: const Icon(Icons.lock_reset, size: 16),
+                    label: const Text(
+                      'Forgot Password?',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    style: TextButton.styleFrom(
+                      foregroundColor: colors.accent,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 8,
+                      ),
+                      minimumSize: const Size(120, 36),
+                    ),
+                  ),
+                ),
+              const SizedBox(height: 32),
 
               ElevatedButton(
                 onPressed: isLoading
@@ -448,7 +461,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                       )
                     : Text(
-                        showRegistration ? "Create Account" : "Login",
+                        showRegistration ? 'Create Account' : 'Login',
                         style: const TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.w600,
@@ -474,7 +487,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
                 child: Text(
                   showRegistration
-                      ? "Already have an account? Login"
+                      ? 'Already have an account? Login'
                       : "Don't have an account? Sign up",
                   style: const TextStyle(
                     fontSize: 14,
@@ -504,7 +517,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       const SizedBox(width: 12),
                       Expanded(
                         child: Text(
-                          "New user? Create an account to get started.",
+                          'New user? Create an account to get started.',
                           style: TextStyle(
                             color: Colors.blue.shade700,
                             fontSize: 13,
@@ -514,6 +527,312 @@ class _LoginScreenState extends State<LoginScreen> {
                     ],
                   ),
                 ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Forgot Password Dialog
+/// Secure password reset flow with 30-second cooldown timer.
+class ForgotPasswordDialog extends StatefulWidget {
+  const ForgotPasswordDialog({super.key});
+
+  @override
+  State<ForgotPasswordDialog> createState() => _ForgotPasswordDialogState();
+}
+
+class _ForgotPasswordDialogState extends State<ForgotPasswordDialog> {
+  final emailController = TextEditingController();
+
+  bool isLoading = false;
+  bool emailSent = false;
+  int cooldownSeconds = 0;
+  Timer? cooldownTimer;
+  String? errorMessage;
+
+  static void _dbg(String message) {
+    assert(() {
+      debugPrint('[RESET] $message');
+      return true;
+    }());
+  }
+
+  @override
+  void dispose() {
+    emailController.dispose();
+    cooldownTimer?.cancel();
+    super.dispose();
+  }
+
+  void _startCooldown() {
+    cooldownSeconds = 30;
+    cooldownTimer?.cancel();
+    cooldownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+      setState(() {
+        cooldownSeconds--;
+        if (cooldownSeconds <= 0) {
+          timer.cancel();
+        }
+      });
+    });
+  }
+
+  Future<void> _sendResetEmail() async {
+    if (isLoading) return;
+
+    final email = emailController.text.trim();
+    _dbg('[EMAIL] Attempting reset for: $email');
+
+    setState(() {
+      isLoading = true;
+      errorMessage = null;
+    });
+
+    try {
+      final result = await AuthService.sendPasswordResetEmail(email);
+
+      if (!mounted) return;
+
+      if (result.success) {
+        _dbg('[EMAIL] Reset email sent successfully');
+        setState(() {
+          emailSent = true;
+          isLoading = false;
+        });
+        _startCooldown();
+      } else {
+        _dbg('[EMAIL] Failed: ${result.message}');
+        setState(() {
+          errorMessage = result.message;
+          isLoading = false;
+        });
+      }
+    } catch (e) {
+      _dbg('[EMAIL] Unexpected error: $e');
+      if (!mounted) return;
+      setState(() {
+        errorMessage = 'An unexpected error occurred. Please try again.';
+        isLoading = false;
+      });
+    }
+  }
+
+  void _close() {
+    _dbg('[AUTH] Closing forgot password dialog');
+    Navigator.of(context).pop();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AppColors.of(context);
+
+    return Dialog(
+      backgroundColor: colors.cardBg,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 400),
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Header
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: colors.accent.withValues(alpha: 0.1),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      emailSent ? Icons.check_circle_outline : Icons.lock_reset,
+                      color: colors.accent,
+                      size: 24,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      emailSent ? 'Check Your Email' : 'Reset Password',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w600,
+                        color: colors.primaryText,
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: _close,
+                    icon: Icon(Icons.close, color: colors.secondaryText),
+                    splashRadius: 20,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
+
+              // Content
+              if (emailSent) ...[
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.green.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: Colors.green.withValues(alpha: 0.2),
+                    ),
+                  ),
+                  child: Column(
+                    children: [
+                      const Icon(
+                        Icons.mark_email_read_outlined,
+                        color: Colors.green,
+                        size: 40,
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        'If an account exists for this email, a reset link has been sent.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: colors.primaryText,
+                          fontSize: 14,
+                          height: 1.4,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Check your inbox and spam folder.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: colors.secondaryText,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ] else ...[
+                Text(
+                  'Enter your email address and we will send you a link to reset your password.',
+                  style: TextStyle(
+                    color: colors.secondaryText,
+                    fontSize: 14,
+                    height: 1.4,
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                TextField(
+                  controller: emailController,
+                  enabled: !isLoading,
+                  keyboardType: TextInputType.emailAddress,
+                  textInputAction: TextInputAction.done,
+                  style: TextStyle(color: colors.primaryText),
+                  decoration: InputDecoration(
+                    labelText: 'Email',
+                    labelStyle: TextStyle(color: colors.secondaryText),
+                    hintText: 'your@email.com',
+                    hintStyle: TextStyle(
+                      color: colors.secondaryText.withValues(alpha: 0.5),
+                    ),
+                    prefixIcon: Icon(
+                      Icons.email_outlined,
+                      color: colors.secondaryText,
+                    ),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide(color: colors.borderColor),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide(color: colors.accent, width: 2),
+                    ),
+                    errorText: errorMessage,
+                    errorStyle: const TextStyle(color: Colors.red),
+                  ),
+                ),
+              ],
+              const SizedBox(height: 24),
+
+              // Action Button
+              if (emailSent) ...[
+                ElevatedButton.icon(
+                  onPressed: cooldownSeconds > 0 ? null : _sendResetEmail,
+                  icon: cooldownSeconds > 0
+                      ? const SizedBox.shrink()
+                      : const Icon(Icons.refresh, size: 18),
+                  label: Text(
+                    cooldownSeconds > 0
+                        ? 'Resend in ${cooldownSeconds}s'
+                        : 'Resend Email',
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: colors.accent,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextButton(
+                  onPressed: _close,
+                  child: Text(
+                    'Back to Login',
+                    style: TextStyle(color: colors.accent),
+                  ),
+                ),
+              ] else ...[
+                ElevatedButton(
+                  onPressed: isLoading ? null : _sendResetEmail,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: colors.accent,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    elevation: 2,
+                    shadowColor: colors.accent.withValues(alpha: 0.4),
+                  ),
+                  child: isLoading
+                      ? const SizedBox(
+                          height: 20,
+                          width: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Text(
+                          'Send Reset Link',
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                ),
+                const SizedBox(height: 12),
+                TextButton(
+                  onPressed: _close,
+                  child: Text(
+                    'Cancel',
+                    style: TextStyle(color: colors.secondaryText),
+                  ),
+                ),
+              ],
             ],
           ),
         ),

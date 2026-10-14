@@ -1,10 +1,13 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 import '../main.dart';
 import '../services/game_service.dart';
+import '../services/multiplayer_service.dart';
 import '../utils/game_state.dart';
+import '../services/startup_task_scheduler.dart';
 import 'connect_four_screen.dart';
 import 'number_guess_screen.dart';
 
@@ -29,8 +32,20 @@ class _GameScreenState extends State<GameScreen> {
   int _tttRebuildCount = 0;
   bool _restarting = false;
 
-  Stream<DocumentSnapshot>? _gameStream;
   bool _isMovePending = false;
+  
+  // Turn timer
+  Timer? _turnTimer;
+  int _secondsLeft = 60;
+  
+  // Session score tracker (local state, persists across restarts)
+  int _myWins = 0;
+  int _opponentWins = 0;
+  String? _lastStatus;
+  
+  // MultiplayerService for centralized stream ownership
+  late final MultiplayerService _multiplayerService;
+  Stream<Map<String, dynamic>?>? _gameStateStream;
 
   static void _dbg(String message) {
     assert(() {
@@ -42,33 +57,79 @@ class _GameScreenState extends State<GameScreen> {
   @override
   void initState() {
     super.initState();
-    GameState.isPlaying = true;
-    _gameStream = GameService.gameStream(widget.roomId);
+    GameState.enter();
+    
+    // Initialize MultiplayerService for centralized stream management
+    _multiplayerService = MultiplayerService();
+    _initializeMultiplayer();
+  }
+  
+  void _initializeMultiplayer() {
+    final currentUser = FirebaseAuth.instance.currentUser;
+    if (currentUser != null) {
+      _multiplayerService.initialize(currentUser.uid);
+      _gameStateStream = _multiplayerService.joinRoom(widget.roomId);
+      _dbg('Multiplayer initialized for room: ${widget.roomId}');
+    }
   }
 
   @override
   void dispose() {
-    GameState.isPlaying = false;
-    GameService.disposeStream(widget.roomId);
+    GameState.leave();
+    // Proper dispose via MultiplayerService (centralized ownership)
+    _multiplayerService.leaveRoom();
+    _turnTimer?.cancel();
     super.dispose();
   }
 
   // ✅ FIX #2: Helper to get correct AppBar title
   String get _appBarTitle {
     switch (_selectedGame) {
-      case "tictactoe":
-        return "Tic Tac Toe";
-      case "connectfour":
-        return "Connect Four";
-      case "numberguess":
-        return "Number Guess";
+      case 'tictactoe':
+        return 'Tic Tac Toe';
+      case 'connectfour':
+        return 'Connect Four';
+      case 'numberguess':
+        return 'Number Guess';
       default:
-        return "Games";
+        return 'Games';
     }
   }
 
   // ✅ FIX #2: Show back button only when in tictactoe (inline game)
-  bool get _showBackButton => _selectedGame == "tictactoe";
+  bool get _showBackButton => _selectedGame == 'tictactoe';
+
+  // Turn timer methods
+  void _startTurnTimer(bool isMyTurn) {
+    _turnTimer?.cancel();
+    if (!isMyTurn) {
+      // Use microtask to avoid setState during build
+      Future.microtask(() {
+        if (mounted) {
+          setState(() => _secondsLeft = 60);
+        }
+      });
+      return;
+    }
+    _turnTimer = Timer.periodic(const Duration(seconds: 1), (t) {
+      if (!mounted) {
+        t.cancel();
+        return;
+      }
+      setState(() => _secondsLeft--);
+      if (_secondsLeft <= 0) {
+        t.cancel();
+        // Auto-forfeit: call GameService to end game with opponent as winner
+        final currentUser = FirebaseAuth.instance.currentUser;
+        if (currentUser != null) {
+          GameService.forfeitGame(
+            roomId: widget.roomId,
+            currentUserId: currentUser.uid,
+          );
+        }
+      }
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -89,7 +150,7 @@ class _GameScreenState extends State<GameScreen> {
             : null,
         title: Row(
           children: [
-            const Text("🎮", style: TextStyle(fontSize: 20)),
+            const Text('🎮', style: TextStyle(fontSize: 20)),
             const SizedBox(width: 8),
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -104,7 +165,7 @@ class _GameScreenState extends State<GameScreen> {
                   ),
                 ),
                 Text(
-                  "vs ${widget.opponentName}",
+                  'vs ${widget.opponentName}',
                   style: TextStyle(color: colors.secondaryText, fontSize: 12),
                 ),
               ],
@@ -114,8 +175,8 @@ class _GameScreenState extends State<GameScreen> {
       ),
       body:
           (_selectedGame == null ||
-              _selectedGame == "connectfour" ||
-              _selectedGame == "numberguess")
+              _selectedGame == 'connectfour' ||
+              _selectedGame == 'numberguess')
           ? _buildGamePicker(context, currentUser.uid, colors)
           : _buildTicTacToe(context, currentUser, colors),
     );
@@ -136,7 +197,7 @@ class _GameScreenState extends State<GameScreen> {
           const SizedBox(height: 16),
 
           Text(
-            "Choose a Game",
+            'Choose a Game',
             style: TextStyle(
               fontSize: 22,
               fontWeight: FontWeight.w700,
@@ -146,7 +207,7 @@ class _GameScreenState extends State<GameScreen> {
           ),
           const SizedBox(height: 6),
           Text(
-            "Challenge ${widget.opponentName} to a game!",
+            'Challenge ${widget.opponentName} to a game!',
             style: TextStyle(fontSize: 14, color: colors.secondaryText),
             textAlign: TextAlign.center,
           ),
@@ -155,26 +216,35 @@ class _GameScreenState extends State<GameScreen> {
 
           // ── Tic Tac Toe ──
           _GameCard(
-            emoji: "❌",
-            title: "Tic Tac Toe",
-            subtitle: "Classic 3×3 strategy game",
+            emoji: '❌',
+            title: 'Tic Tac Toe',
+            subtitle: 'Classic 3×3 strategy game',
             color: const Color(0xFF3B82F6),
             colors: colors,
-            onTap: () {
+            onTap: () async {
               debugPrint('[GameScreen] TicTacToe selected');
               // ✅ FIX #1: TicTacToe uses its own game path via GameService
               // GameService writes to chat_rooms/{roomId} "game" field
               // This is isolated from Connect Four's subcollection path
               setState(() {
-                _selectedGame = "tictactoe";
+                _selectedGame = 'tictactoe';
                 _lastTttGameData = null;
                 _cachedTttWidget = null;
               });
-              GameService.startGame(
+              
+              // Ensure MultiplayerService stream is active before starting game
+              if (_gameStateStream == null) {
+                _initializeMultiplayer();
+              }
+              
+              // Wait for game to be created in Firestore
+              await GameService.startGame(
                 roomId: widget.roomId,
                 currentUserId: currentUserId,
                 opponentId: widget.opponentId,
+                type: 'tictactoe',
               );
+              debugPrint('[GameScreen] TicTacToe game created');
             },
           ),
 
@@ -182,14 +252,14 @@ class _GameScreenState extends State<GameScreen> {
 
           // In game_screen.dart, update the Connect Four card onTap:
           _GameCard(
-            emoji: "🔴",
-            title: "Connect Four",
-            subtitle: "Drop discs and connect 4 to win!",
+            emoji: '🔴',
+            title: 'Connect Four',
+            subtitle: 'Drop discs and connect 4 to win!',
             color: const Color(0xFFEF4444),
             colors: colors,
             onTap: () {
               debugPrint('[GameScreen] Connect Four selected');
-              setState(() => _selectedGame = "connectfour");
+              setState(() => _selectedGame = 'connectfour');
               Navigator.push(
                 context,
                 MaterialPageRoute(
@@ -209,26 +279,50 @@ class _GameScreenState extends State<GameScreen> {
 
           // ── Number Guess ──
           _GameCard(
-            emoji: "🔢",
-            title: "Number Guess",
-            subtitle: "Set a number, give hints, outsmart them!",
+            emoji: '🔢',
+            title: 'Number Guess',
+            subtitle: 'Set a number, give hints, outsmart them!',
             color: const Color(0xFF8B5CF6),
             colors: colors,
             onTap: () {
-              debugPrint('[GameScreen] Number Guess selected');
-              setState(() => _selectedGame = "numberguess");
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => NumberGuessScreen(
-                    roomId: widget.roomId,
-                    opponentId: widget.opponentId,
-                    opponentName: widget.opponentName,
+              debugPrint('[PERF] Number Guess selected');
+              setState(() => _selectedGame = 'numberguess');
+              
+              // ✅ FIX: Pause background tasks for smooth navigation
+              StartupTaskScheduler.pauseBackgroundTasks();
+              debugPrint('[PERF] Background tasks paused for navigation');
+              
+              debugPrint('[NG_ROUTE] Starting navigation to NumberGuessScreen...');
+              debugPrint('[NG_ROUTE] roomId=${widget.roomId}, opponentId=${widget.opponentId}');
+              
+              try {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) {
+                      debugPrint('[NG_ROUTE] MaterialPageRoute.builder executing');
+                      debugPrint('[NG_ROUTE] Creating NumberGuessScreen widget');
+                      return NumberGuessScreen(
+                        roomId: widget.roomId,
+                        opponentId: widget.opponentId,
+                        opponentName: widget.opponentName,
+                      );
+                    },
                   ),
-                ),
-              ).then((_) {
-                if (mounted) setState(() => _selectedGame = null);
-              });
+                ).then((result) {
+                  debugPrint('[NG_ROUTE] Navigator.push returned with result: $result');
+                  // Resume background tasks when returning
+                  StartupTaskScheduler.resumeBackgroundTasks();
+                  debugPrint('[PERF] Background tasks resumed');
+                  if (mounted) setState(() => _selectedGame = null);
+                });
+                debugPrint('[NG_ROUTE] Navigator.push called successfully');
+              } catch (e, stackTrace) {
+                debugPrint('[NG_ROUTE] ERROR during navigation: $e');
+                StartupTaskScheduler.resumeBackgroundTasks();
+                debugPrint('[PERF] Background tasks resumed (error)');
+                debugPrint('[NG_ROUTE] Stack trace: $stackTrace');
+              }
             },
           ),
 
@@ -250,7 +344,7 @@ class _GameScreenState extends State<GameScreen> {
               color: colors.secondaryText,
             ),
             label: Text(
-              "Back to Chat",
+              'Back to Chat',
               style: TextStyle(color: colors.secondaryText),
             ),
             onPressed: () => Navigator.pop(context),
@@ -270,22 +364,38 @@ class _GameScreenState extends State<GameScreen> {
     User currentUser,
     AppColors colors,
   ) {
-    return StreamBuilder<DocumentSnapshot>(
-      stream: _gameStream ?? const Stream.empty(),
+    // Use MultiplayerService stream instead of direct Firestore
+    return StreamBuilder<Map<String, dynamic>?>(
+      stream: _gameStateStream ?? const Stream.empty(),
       builder: (context, snapshot) {
         _tttRebuildCount++;
         _dbg('TicTacToe StreamBuilder rebuild #$_tttRebuildCount');
 
-        if (!snapshot.hasData) {
-          return Center(child: CircularProgressIndicator(color: colors.accent));
+        if (!snapshot.hasData || snapshot.data == null) {
+          _dbg('TicTacToe: No data yet, showing loading...');
+          return Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                CircularProgressIndicator(color: colors.accent),
+                const SizedBox(height: 16),
+                Text(
+                  'Loading game...',
+                  style: TextStyle(color: colors.secondaryText, fontSize: 14),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Room: ${widget.roomId.substring(0, 8)}...',
+                  style: TextStyle(color: colors.secondaryText.withValues(alpha: 0.5), fontSize: 12),
+                ),
+              ],
+            ),
+          );
         }
+        
+        _dbg('TicTacToe: Received game data: ${snapshot.data}');
 
-        final roomData = snapshot.data!.data() as Map<String, dynamic>?;
-        final gameData = roomData?["game"] as Map<String, dynamic>?;
-
-        if (gameData == null) {
-          return Center(child: CircularProgressIndicator(color: colors.accent));
-        }
+        final gameData = snapshot.data!;
 
         if (_lastTttGameData != null &&
             _deepEquals(gameData, _lastTttGameData!)) {
@@ -295,15 +405,43 @@ class _GameScreenState extends State<GameScreen> {
 
         _lastTttGameData = Map<String, dynamic>.from(gameData);
 
-        final board = List<String>.from(gameData["board"]);
-        final status = gameData["status"] as String;
-        final currentTurn = gameData["currentTurn"] as String;
-        final winner = gameData["winner"] as String?;
-        final players = List<String>.from(gameData["players"]);
+        final board = List<String>.from(gameData['board'] ?? []);
+        final status = gameData['status'] as String? ?? 'playing';
+        final currentTurn = gameData['currentTurn'] as String?;
+        final winner = gameData['winner'] as String?;
+        final players = List<String>.from(gameData['players'] ?? []);
+        
+        if (players.isEmpty) {
+          return Center(child: CircularProgressIndicator(color: colors.accent));
+        }
 
-        final isMyTurn = currentTurn == currentUser.uid;
-        final mySymbol = players[0] == currentUser.uid ? "X" : "O";
-        final opponentSymbol = mySymbol == "X" ? "O" : "X";
+        final isMyTurn = currentTurn != null && currentTurn == currentUser.uid;
+        final mySymbol = players[0] == currentUser.uid ? 'X' : 'O';
+        final opponentSymbol = mySymbol == 'X' ? 'O' : 'X';
+        
+        // Detect game-end transitions and update session score
+        if (status == 'finished' && _lastStatus == 'playing') {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) {
+              setState(() {
+                if (winner == currentUser.uid) {
+                  _myWins++;
+                } else {
+                  _opponentWins++;
+                }
+              });
+            }
+          });
+        }
+        _lastStatus = status;
+        
+        // Start/stop turn timer based on turn
+        // Defer to avoid setState during build
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            _startTurnTimer(isMyTurn);
+          }
+        });
 
         _cachedTttWidget = Padding(
           padding: const EdgeInsets.all(24),
@@ -358,6 +496,7 @@ class _GameScreenState extends State<GameScreen> {
                 currentUser.uid,
                 colors,
                 isMyTurn,
+                gameData,
               ),
               const SizedBox(height: 40),
               _buildActions(context, currentUser.uid, status, colors),
@@ -401,28 +540,39 @@ class _GameScreenState extends State<GameScreen> {
     return Row(
       children: [
         _buildPlayerCard(
-          label: "You",
+          label: 'You',
           symbol: mySymbol,
-          isActive: isMyTurn && status == "playing",
+          isActive: isMyTurn && status == 'playing',
           color: const Color(0xFF3B82F6),
           colors: colors,
         ),
         Expanded(
           child: Center(
-            child: Text(
-              "VS",
-              style: TextStyle(
-                fontWeight: FontWeight.w700,
-                fontSize: 18,
-                color: colors.secondaryText,
-              ),
+            child: Column(
+              children: [
+                Text(
+                  '$_myWins - $_opponentWins',
+                  style: TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
+                    color: colors.primaryText,
+                  ),
+                ),
+                Text(
+                  'VS',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: colors.secondaryText,
+                  ),
+                ),
+              ],
             ),
           ),
         ),
         _buildPlayerCard(
           label: widget.opponentName,
           symbol: opponentSymbol,
-          isActive: !isMyTurn && status == "playing",
+          isActive: !isMyTurn && status == 'playing',
           color: const Color(0xFFEF4444),
           colors: colors,
         ),
@@ -486,22 +636,22 @@ class _GameScreenState extends State<GameScreen> {
     Color bgColor;
     Color textColor;
 
-    if (status == "finished") {
+    if (status == 'finished') {
       if (winner == currentUserId) {
-        text = "🎉 You won!";
+        text = '🎉 You won!';
         bgColor = Colors.green.withValues(alpha: 0.15);
         textColor = Colors.green;
       } else {
-        text = "😔 ${widget.opponentName} won";
+        text = '😔 ${widget.opponentName} won';
         bgColor = Colors.red.withValues(alpha: 0.12);
         textColor = Colors.red;
       }
-    } else if (status == "draw") {
+    } else if (status == 'draw') {
       text = "🤝 It's a draw!";
       bgColor = Colors.orange.withValues(alpha: 0.12);
       textColor = Colors.orange;
     } else {
-      text = isMyTurn ? "Your turn" : "${widget.opponentName}'s turn";
+      text = isMyTurn ? 'Your turn ($_secondsLeft s)' : "${widget.opponentName}'s turn";
       bgColor = isMyTurn
           ? colors.accent.withValues(alpha: 0.1)
           : colors.inputBg;
@@ -537,7 +687,9 @@ class _GameScreenState extends State<GameScreen> {
     String currentUserId,
     AppColors colors,
     bool isMyTurn,
+    Map<String, dynamic> gameData,
   ) {
+    final winningCells = (gameData['winningCells'] as List?)?.cast<int>().toSet() ?? {};
     return AspectRatio(
       aspectRatio: 1,
       child: Container(
@@ -564,10 +716,12 @@ class _GameScreenState extends State<GameScreen> {
           itemBuilder: (context, index) {
             final cell = board[index];
             final isEmpty = cell.isEmpty;
-            final isX = cell == "X";
+            final isX = cell == 'X';
+            // Only show winning cells highlight when game is actually finished
+            final isWinningCell = status == 'finished' && winningCells.contains(index);
 
             return GestureDetector(
-              onTap: (status == "playing" && isMyTurn && isEmpty)
+              onTap: (status == 'playing' && isMyTurn && isEmpty)
                   ? () async {
                       if (_isMovePending) return;
                       setState(() {
@@ -584,28 +738,42 @@ class _GameScreenState extends State<GameScreen> {
                     }
                   : null,
               child: AnimatedContainer(
-                duration: const Duration(milliseconds: 200),
+                duration: const Duration(milliseconds: 400),
                 decoration: BoxDecoration(
-                  color: isEmpty
-                      ? colors.inputBg
-                      : isX
-                      ? const Color(0xFF3B82F6).withValues(alpha: 0.12)
-                      : const Color(0xFFEF4444).withValues(alpha: 0.12),
+                  color: isWinningCell
+                      ? Colors.green.withValues(alpha: 0.25)
+                      : isEmpty
+                          ? colors.inputBg
+                          : isX
+                              ? const Color(0xFF3B82F6).withValues(alpha: 0.12)
+                              : const Color(0xFFEF4444).withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(10),
                   border: Border.all(
-                    color: isEmpty
-                        ? colors.borderColor
-                        : isX
-                        ? const Color(0xFF3B82F6)
-                        : const Color(0xFFEF4444),
-                    width: isEmpty ? 1 : 2,
+                    color: isWinningCell
+                        ? Colors.green
+                        : isEmpty
+                            ? colors.borderColor.withValues(alpha: 0.4)
+                            : isX
+                                ? const Color(0xFF3B82F6)
+                                : const Color(0xFFEF4444),
+                    width: isWinningCell ? 2.5 : (isEmpty ? 1.0 : 2.0),
                   ),
+                  boxShadow: isWinningCell
+                      ? [BoxShadow(color: Colors.green.withValues(alpha: 0.4), blurRadius: 12)]
+                      : null,
                 ),
                 child: Center(
                   child: AnimatedSwitcher(
-                    duration: const Duration(milliseconds: 200),
-                    transitionBuilder: (child, animation) =>
-                        ScaleTransition(scale: animation, child: child),
+                    duration: const Duration(milliseconds: 450),
+                    transitionBuilder: (child, animation) {
+                      return ScaleTransition(
+                        scale: CurvedAnimation(
+                          parent: animation,
+                          curve: Curves.elasticOut,  // bouncy feel
+                        ),
+                        child: child,
+                      );
+                    },
                     child: Text(
                       cell,
                       key: ValueKey(cell + index.toString()),
@@ -648,14 +816,21 @@ class _GameScreenState extends State<GameScreen> {
             ),
           ),
           icon: const Icon(Icons.refresh, size: 18),
-          label: Text(status == "playing" ? "Restart" : "Play Again"),
+          label: Text(status == 'playing' ? 'Restart' : 'Play Again'),
           onPressed: () async {
             if (_restarting) return;
             setState(() => _restarting = true);
+            
+            // Clear cached game data to force rebuild with fresh state
+            _lastTttGameData = null;
+            _cachedTttWidget = null;
+            _lastStatus = null;
+            
             await GameService.startGame(
               roomId: widget.roomId,
               currentUserId: currentUserId,
               opponentId: widget.opponentId,
+              type: 'tictactoe',
             );
             if (mounted) setState(() => _restarting = false);
           },
@@ -676,7 +851,7 @@ class _GameScreenState extends State<GameScreen> {
             color: colors.secondaryText,
           ),
           label: Text(
-            "Game Menu",
+            'Game Menu',
             style: TextStyle(color: colors.secondaryText),
           ),
           onPressed: () => setState(() => _selectedGame = null),
@@ -688,7 +863,7 @@ class _GameScreenState extends State<GameScreen> {
 
 // ── Game Card Widget ───────────────────────────────────────────────────────
 
-class _GameCard extends StatelessWidget {
+class _GameCard extends StatefulWidget {
   final String emoji;
   final String title;
   final String subtitle;
@@ -706,64 +881,81 @@ class _GameCard extends StatelessWidget {
   });
 
   @override
+  State<_GameCard> createState() => _GameCardState();
+}
+
+class _GameCardState extends State<_GameCard> {
+  bool _pressed = false;
+
+  @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          color: colors.cardBg,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: color.withValues(alpha: 0.3)),
-          boxShadow: [
-            BoxShadow(
-              color: color.withValues(alpha: 0.08),
-              blurRadius: 12,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
-        child: Row(
-          children: [
-            // Emoji container
-            Container(
-              width: 56,
-              height: 56,
-              decoration: BoxDecoration(
-                color: color.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(14),
-              ),
-              child: Center(
-                child: Text(emoji, style: const TextStyle(fontSize: 28)),
-              ),
-            ),
-            const SizedBox(width: 16),
-
-            // Title + subtitle
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w700,
-                      color: colors.primaryText,
+      onTapDown: (_) => setState(() => _pressed = true),
+      onTapUp: (_) => setState(() => _pressed = false),
+      onTapCancel: () => setState(() => _pressed = false),
+      onTap: widget.onTap,
+      child: AnimatedScale(
+        scale: _pressed ? 0.97 : 1.0,
+        duration: const Duration(milliseconds: 100),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 100),
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: widget.colors.cardBg,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: widget.color.withValues(alpha: 0.3)),
+            boxShadow: _pressed
+                ? []
+                : [
+                    BoxShadow(
+                      color: widget.color.withValues(alpha: 0.08),
+                      blurRadius: 12,
+                      offset: const Offset(0, 4),
                     ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    subtitle,
-                    style: TextStyle(fontSize: 13, color: colors.secondaryText),
-                  ),
-                ],
+                  ],
+          ),
+          child: Row(
+            children: [
+              // Emoji container
+              Container(
+                width: 56,
+                height: 56,
+                decoration: BoxDecoration(
+                  color: widget.color.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Center(
+                  child: Text(widget.emoji, style: const TextStyle(fontSize: 28)),
+                ),
               ),
-            ),
+              const SizedBox(width: 16),
 
-            // Chevron
-            Icon(Icons.chevron_right_rounded, color: color, size: 26),
-          ],
+              // Title + subtitle
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      widget.title,
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: widget.colors.primaryText,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      widget.subtitle,
+                      style: TextStyle(fontSize: 13, color: widget.colors.secondaryText),
+                    ),
+                  ],
+                ),
+              ),
+
+              // Chevron
+              Icon(Icons.chevron_right_rounded, color: widget.color, size: 26),
+            ],
+          ),
         ),
       ),
     );

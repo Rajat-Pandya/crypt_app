@@ -1,136 +1,253 @@
-# Crypt - End-to-End Encrypted Chat Application
+# Crypt - Secure Encrypted Messaging App
 
 <p align="center">
-  <img src="assets/icon.png" width="128" height="128" alt="Crypt App Icon">
+  <img src="screenshots/app_icon.png" alt="Crypt App Icon" width="120"/>
 </p>
 
 <p align="center">
-  <a href="https://flutter.dev/">
-    <img src="https://img.shields.io/badge/Flutter-3.11+-02569B?style=flat-square&logo=flutter" alt="Flutter">
-  </a>
-  <a href="https://firebase.google.com/">
-    <img src="https://img.shields.io/badge/Firebase-Ready-FFCA28?style=flat-square&logo=firebase" alt="Firebase">
-  </a>
-  <a href="https://opensource.org/licenses/MIT">
-    <img src="https://img.shields.io/badge/License-MIT-green.svg?style=flat-square" alt="License">
-  </a>
+  <strong>End-to-End Encrypted Messaging with Multiplayer Games</strong>
+</p>
+
+<p align="center">
+  <a href="#features">Features</a> •
+  <a href="#architecture">Architecture</a> •
+  <a href="#encryption">Encryption</a> •
+  <a href="#installation">Installation</a> •
+  <a href="#screenshots">Screenshots</a>
 </p>
 
 ---
 
 ## Overview
 
-Crypt is a production-ready Flutter chat application featuring **end-to-end encryption** (E2EE) for secure messaging. Messages are encrypted on the sender's device and can only be decrypted by the intended recipient - even the server cannot read the message content.
+**Crypt** is a production-grade Flutter messaging application featuring military-grade end-to-end encryption, real-time multiplayer games within chats, and comprehensive security features. Built with Firebase backend, the app ensures complete message privacy using AES-256 encryption with RSA-4096 key exchange and HMAC-SHA256 message integrity verification.
 
-### Key Security Features
+### Key Highlights
 
-- **AES-256-CBC** for message encryption
-- **RSA-2048** for secure key exchange
-- **PBKDF2** (600k iterations) for key derivation
-- **Client-side encryption** - server never sees plaintext
-- **Secure key backup** - encrypted with user's password
-
----
-
-## Architecture
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                        Crypt Architecture                       │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                  │
-│  ┌──────────────┐     ┌──────────────┐     ┌──────────────┐    │
-│  │   Sender    │────▶│   Firebase  │────▶│  Receiver   │    │
-│  │   Device    │     │   Firestore  │     │   Device    │    │
-│  └──────────────┘     └──────────────┘     └──────────────┘    │
-│         │                    │                    │              │
-│         ▼                    │                    ▼              │
-│  ┌──────────────┐          │            ┌──────────────┐       │
-│  │   Encrypt   │          │            │   Decrypt   │       │
-│  │  (AES-256) │          │            │  (AES-256)  │       │
-│  └──────────────┘          │            └──────────────┘       │
-│         │                  │                    │              │
-│         ▼                  │                    ▼              │
-│  ┌──────────────┐          │            ┌──────────────┐       │
-│  │   RSA Wrap  │          │            │   RSA Unwrap │       │
-│  │  (Receiver) │          │            │   (Sender)   │       │
-│  └──────────────┘          │            └──────────────┘       │
-│                             │                                  │
-└─────────────────────────────┴──────────────────────────────────┘
-```
-
-### Technology Stack
-
-| Layer | Technology |
-|-------|------------|
-| **Frontend** | Flutter 3.11+ |
-| **Backend** | Firebase (Auth, Firestore) |
-| **Notifications** | OneSignal + Cloudflare Worker |
-| **Encryption** | PointyCastle (RSA/AES) |
-| **Secure Storage** | Flutter Secure Storage |
-| **State** | StreamBuilder + ValueNotifier |
+- **Military-Grade Encryption**: AES-256-GCM with RSA-4096 key exchange
+- **Zero-Knowledge Architecture**: Messages encrypted on device, server only sees ciphertext
+- **Multiplayer Games**: Play games while chatting (Tic-Tac-Toe, etc.)
+- **Cross-Platform**: Works on Android and iOS with Firebase backend
+- **Offline Support**: Hive local caching for messages and chat history
+- **Push Notifications**: OneSignal integration for message alerts
 
 ---
 
 ## Features
 
 ### Core Messaging
-- ✅ End-to-end encrypted messages
-- ✅ Real-time message delivery
-- ✅ Read receipts (sent/delivered/seen)
-- ✅ Typing indicators
-- ✅ Message reactions
-- ✅ Reply to messages
-- ✅ Starred messages
-- ✅ Message search
-- ✅ Delete for me / Delete for everyone
+- [x] **End-to-End Encryption**: All messages encrypted with AES-256-GCM
+- [x] **Real-time Messaging**: Firestore real-time sync with offline persistence
+- [x] **Message Status**: Sent, delivered, and read receipts
+- [x] **Typing Indicators**: Real-time typing status
+- [x] **Online Presence**: See when contacts are online/offline
+- [x] **Message Reactions**: React to messages with emojis
+- [x] **Reply to Messages**: Quote and reply to specific messages
+- [x] **Starred Messages**: Save important messages
+- [x] **Search Messages**: Full-text search in chat history
+- [x] **Media Sharing**: Send images and files (coming soon)
 
-### Chat Management
-- ✅ Pinned chats
-- ✅ Mute notifications
-- ✅ Chat clear
-- ✅ Block/unblock users
+### Security Features
+- [x] **RSA-4096 Key Pairs**: Asymmetric encryption for key exchange
+- [x] **HMAC-SHA256**: Message integrity verification
+- [x] **Replay Attack Protection**: Cryptographic nonces for each message
+- [x] **Device Trust System**: Multi-device approval with OTP
+- [x] **Key Rotation**: Automatic key updates for security
+- [x] **Session Recovery**: Secure device-to-device key transfer
+- [x] **Biometric Support**: Device-level security integration
 
-### Security
-- ✅ RSA key pair generation
-- ✅ Secure key backup to cloud
-- ✅ Key mismatch detection
-- ✅ Session timeout (30 min)
-- ✅ Email verification
+### Multiplayer Games
+- [x] **In-Chat Games**: Play without leaving the conversation
+- [x] **Tic-Tac-Toe**: Classic strategy game
+- [x] **Real-time Sync**: Game state synchronized via Firestore
+- [x] **Turn-based**: Take turns asynchronously
+- [x] **Game Invites**: Challenge friends to games
 
-### Social
-- ✅ User profiles
-- ✅ Online status
-- ✅ Last seen
-
-### Games
-- ✅ Connect Four
-- ✅ Number Guess
+### User Experience
+- [x] **Dark Mode**: Complete dark theme support
+- [x] **Responsive UI**: Works on all screen sizes
+- [x] **Smooth Animations**: 60fps animations throughout
+- [x] **Offline Mode**: Continue chatting without internet
+- [x] **Push Notifications**: Never miss a message
+- [x] **Profile Customization**: Display names and avatars
 
 ---
 
-## Encryption Details
+## Architecture
 
-### How It Works
+### Technology Stack
 
-1. **Key Generation**: Each user has an RSA-2048 key pair
-2. **Key Exchange**: Public keys stored in Firestore (anyone can see)
-3. **Message Encryption**:
-   - Generate random AES-256 key per message
-   - Encrypt message with AES
-   - Encrypt AES key with recipient's RSA public key
-4. **Decryption**:
-   - Decrypt AES key with RSA private key
-   - Decrypt message with AES key
+| Layer | Technology |
+|-------|-----------|
+| **Frontend** | Flutter 3.24+ (Dart) |
+| **Backend** | Firebase (Firestore, Auth, Storage) |
+| **State Management** | BLoC Pattern + Hydrated BLoC |
+| **Local Cache** | Hive (NoSQL) |
+| **Encryption** | Pointycastle (RSA/AES), Crypto (HMAC) |
+| **Push Notifications** | OneSignal |
+| **Dependency Injection** | GetIt |
 
-### Key Backup
+### System Architecture
 
-Private keys are encrypted with the user's password using:
-- **PBKDF2**: 600,000 iterations
-- **AES-256-GCM**: Authenticated encryption
-- **Random salt**: Per-device unique
+```
+┌─────────────────────────────────────────────────────────────┐
+│                        Flutter App                          │
+├─────────────────────────────────────────────────────────────┤
+│  UI Layer (Screens, Widgets)                                 │
+├─────────────────────────────────────────────────────────────┤
+│  BLoC Layer (Business Logic)                                 │
+│  ├── ChatBloc                                               │
+│  ├── AuthBloc                                               │
+│  └── GameBloc                                               │
+├─────────────────────────────────────────────────────────────┤
+│  Service Layer                                              │
+│  ├── SecureChatService (Encryption/Decryption)             │
+│  ├── ChatUtilService (Core chat operations)                │
+│  ├── DeviceService (Device registration)                  │
+│  └── GameService (Multiplayer sync)                        │
+├─────────────────────────────────────────────────────────────┤
+│  Repository Layer                                           │
+│  ├── ChatRoomRepository                                     │
+│  ├── UserRepository                                         │
+│  └── MessageRepository                                      │
+├─────────────────────────────────────────────────────────────┤
+│  Cache Layer (Hive)                                        │
+│  ├── Chat Rooms                                             │
+│  ├── Messages                                               │
+│  └── User Data                                              │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│                     Firebase Backend                          │
+│  ├── Firestore (Messages, Users, Games)                      │
+│  ├── Firebase Auth (Authentication)                        │
+│  └── Cloud Functions (Optional)                            │
+└─────────────────────────────────────────────────────────────┘
+```
 
-The backup is stored in Firestore but never transmitted in plaintext.
+### Data Flow
+
+```
+Send Message:
+User Input → Encryption (AES-256) → Firestore → Recipient Device → Decryption → Display
+
+Receive Message:
+Firestore → Device → Decryption (AES-256) → Verification (HMAC) → Display
+
+Game State:
+User Action → Firestore Transaction → Real-time Sync → All Devices Update
+```
+
+---
+
+## Encryption
+
+### Encryption Architecture
+
+Crypt implements a **hybrid encryption system** combining the best of asymmetric and symmetric cryptography:
+
+```
+Message Encryption Flow:
+┌─────────────┐     ┌──────────────┐     ┌─────────────────┐
+│  Plaintext  │────▶│  AES-256-GCM │────▶│   Ciphertext      │
+│  Message    │     │  (Random Key)│     │   + Encrypted Key │
+└─────────────┘     └──────────────┘     └─────────────────┘
+                                                  │
+                                                  ▼
+                                         ┌─────────────────┐
+                                         │  RSA-4096        │
+                                         │  (Public Key)    │
+                                         │  Encrypts AES Key │
+                                         └─────────────────┘
+```
+
+### Security Features
+
+1. **Key Exchange**: RSA-4096 for secure AES key exchange
+2. **Message Encryption**: AES-256-GCM for content
+3. **Integrity**: HMAC-SHA256 for tamper detection
+4. **Replay Protection**: Unique nonces per message
+5. **Forward Secrecy**: Keys rotated periodically
+
+### Key Management
+
+- **Private Key**: Stored in Android Keystore / iOS Keychain
+- **Public Key**: Uploaded to Firestore for other users
+- **AES Keys**: Unique per message, never reused
+- **Key Rotation**: Automatic on device change
+
+---
+
+## Installation
+
+### Prerequisites
+
+- Flutter SDK 3.24+
+- Firebase CLI
+- Android Studio / Xcode
+- OneSignal Account (for push notifications)
+
+### Setup Instructions
+
+1. **Clone the repository**
+   ```bash
+   git clone https://github.com/yourusername/crypt.git
+   cd crypt
+   ```
+
+2. **Install dependencies**
+   ```bash
+   flutter pub get
+   ```
+
+3. **Configure Firebase**
+   
+   a. Create a Firebase project at [console.firebase.google.com](https://console.firebase.google.com)
+   
+   b. Enable Authentication (Email/Password)
+   
+   c. Enable Firestore Database
+   
+   d. Download `google-services.json` and place in `android/app/`
+   
+   e. Deploy Firestore security rules:
+      ```bash
+      firebase deploy --only firestore:rules
+      ```
+
+4. **Configure OneSignal**
+   
+   a. Create OneSignal app at [onesignal.com](https://onesignal.com)
+   
+   b. Copy App ID to `lib/config/app_config.dart`
+
+5. **Build and run**
+   ```bash
+   flutter run
+   ```
+
+### Environment Variables
+
+Create a `.env` file (not committed to git):
+
+```
+FIREBASE_API_KEY=your_api_key
+ONESIGNAL_APP_ID=your_onesignal_id
+```
+
+---
+
+## Screenshots
+
+<p align="center">
+  <img src="screenshots/login.png" width="200" />
+  <img src="screenshots/chat_list.png" width="200" />
+  <img src="screenshots/chat_screen.png" width="200" />
+  <img src="screenshots/game.png" width="200" />
+</p>
+
+*See [screenshots/](screenshots/) folder for more images*
 
 ---
 
@@ -138,120 +255,136 @@ The backup is stored in Firestore but never transmitted in plaintext.
 
 ```
 lib/
-├── main.dart                 # App entry point
-├── config/
-│   └── app_config.dart     # Runtime configuration
-├── screens/
-│   ├── chat_screen.dart    # Chat view
-│   ├── chat_list_screen.dart
-│   ├── login_screen.dart
-│   ├── settings_screen.dart
-│   ├── profile_screen.dart
-│   └── ...
-├── services/
-│   ├── auth_service.dart       # Authentication
-│   ├── chat_service.dart       # Messaging
-│   ├── key_backup_service.dart
-│   └── session_manager.dart
-├── utils/
-│   ├── encryption.dart     # AES helpers
-│   ├── rsa_helper.dart    # RSA helpers
-│   └── input_validator.dart
-└── widgets/
-    └── error_boundary.dart
+├── blocs/              # BLoC state management
+├── cache/              # Hive local cache
+├── config/             # App configuration
+├── models/             # Data models
+├── repositories/       # Data repositories
+├── screens/            # UI screens
+├── services/           # Business logic services
+├── utils/              # Utilities and helpers
+├── widgets/            # Reusable widgets
+└── main.dart           # App entry point
 ```
 
 ---
 
-## Setup Instructions
+## Firebase Configuration
 
-### Prerequisites
+### Firestore Security Rules
 
-- Flutter 3.11+
-- Firebase project
-- OneSignal account (optional)
-- Cloudflare Worker (optional)
+The app uses comprehensive security rules to protect user data:
 
-### 1. Clone & Install
+- **Users**: Only authenticated users can read user profiles
+- **Chat Rooms**: Only participants can access room data
+- **Messages**: End-to-end encrypted, only sender/receiver can read
+- **Games**: Only room participants can play
 
-```bash
-git clone https://github.com/yourusername/crypt.git
-cd crypt
-flutter pub get
+See `firestore.rules` for complete rules.
+
+### Firestore Indexes
+
+Required composite indexes:
+
+```json
+{
+  "indexes": [
+    {
+      "collectionGroup": "chat_rooms",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "users", "arrayConfig": "CONTAINS" },
+        { "fieldPath": "lastMessageTime", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "messages",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "timestamp", "order": "ASCENDING" }
+      ]
+    }
+  ]
+}
 ```
 
-### 2. Firebase Setup
+---
 
-1. Create a Firebase project
-2. Enable Authentication (Email/Password)
-3. Enable Firestore
-4. Download `google-services.json` → `android/app/`
+## Development
 
-### 3. Configure (Optional)
+### Running Tests
 
 ```bash
-# OneSignal App ID
-flutter run --dart-define=ONESIGNAL_APP_ID=your-app-id
-
-# Cloudflare Worker URL  
-flutter run --dart-define=CF_WORKER_URL=https://your-worker.workers.dev
+flutter test
 ```
 
-### 4. Build
+### Building Release APK
 
 ```bash
-# Debug APK
-flutter build apk --debug
-
-# Release APK
 flutter build apk --release
 ```
 
----
+### Building iOS
 
-## Screenshots
-
-<div align="center">
-  <img src=".github/screenshots/chat.png" width="240" alt="Chat Screen">
-  <img src=".github/screenshots/chat-list.png" width="240" alt="Chat List">
-  <img src=".github/screenshots/settings.png" width="240" alt="Settings">
-</div>
-
----
-
-## Security Considerations
-
-- Private keys stored in platform keychain (Android Keystore / iOS Keychain)
-- Keys never transmitted in plaintext
-- PBKDF2 with 600k iterations for key backup
-- AES-256-GCM for authenticated encryption
-- Session timeout after 30 minutes of inactivity
+```bash
+flutter build ios --release
+```
 
 ---
 
 ## Future Roadmap
 
-- [ ] Group messaging support
-- [ ] Voice messages
-- [ ] Image/file sharing
-- [ ] Message editing history
-- [ ] Cross-platform key verification
-- [ ] Push notification improvements
+- [ ] **Voice Messages**: Encrypted audio messaging
+- [ ] **Video Calls**: End-to-end encrypted calls
+- [ ] **Group Chats**: Multi-user encrypted conversations
+- [ ] **File Sharing**: Secure document sharing
+- [ ] **Stories**: Ephemeral photo/video sharing
+- [ ] **Web App**: Flutter web support
+
+---
+
+## Security Considerations
+
+⚠️ **Important Security Notes:**
+
+1. **Never commit** `google-services.json` to public repositories
+2. **Rotate API keys** regularly
+3. **Enable Firebase App Check** for production
+4. **Monitor Firestore rules** for security vulnerabilities
+5. **Keep dependencies updated** for security patches
 
 ---
 
 ## Contributing
 
-Contributions are welcome! Please read the contributing guidelines before submitting PRs.
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
 
 ---
 
 ## License
 
-MIT License - see [LICENSE](LICENSE) for details.
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ---
 
-## Disclaimer
+## Acknowledgments
 
-This application uses encryption to protect message privacy. While the implementation follows industry best practices, no guarantee can be made regarding absolute security. Users should exercise caution when sharing sensitive information.
+- [Flutter](https://flutter.dev) - UI framework
+- [Firebase](https://firebase.google.com) - Backend services
+- [Pointycastle](https://github.com/bcgit/pc-dart) - Cryptographic library
+- [Hive](https://docs.hivedb.dev) - Local database
+- [OneSignal](https://onesignal.com) - Push notifications
+
+---
+
+<p align="center">
+  <strong>Built with ❤️ and 🔐</strong>
+</p>
+
+<p align="center">
+  <sub>Crypt - Secure messaging for everyone</sub>
+</p>

@@ -1,10 +1,12 @@
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
 import '../utils/avatar_utils.dart';
 import '../main.dart';
 import '../utils/input_validator.dart';
-import 'chat_screen.dart' show ChatScreen;
+import 'chat_screen_wrapper.dart';
 
 class UserListScreen extends StatefulWidget {
   const UserListScreen({super.key});
@@ -68,15 +70,42 @@ final emailErr = InputValidator.validateEmail(email);
     });
 
     try {
+      // Normalize email to lowercase for case-insensitive search
+      final normalizedEmail = email.toLowerCase().trim();
+      debugPrint('[UserList] Searching for email: "$normalizedEmail"');
+      debugPrint('[UserList] Current user uid: ${currentUser.uid}');
+      
       final snapshot = await FirebaseFirestore.instance
-          .collection("users")
-          .where("email", isEqualTo: email)
+          .collection('users')
+          .where('email', isEqualTo: normalizedEmail)
           .limit(1)
           .get();
+      
+      debugPrint('[UserList] Query returned ${snapshot.docs.length} documents');
 
       if (snapshot.docs.isEmpty) {
+        // Try fallback: fetch all users and do client-side search (debug mode only)
+        if (kDebugMode) {
+          debugPrint('[UserList] Fallback: trying client-side search');
+          try {
+            final allUsers = await FirebaseFirestore.instance
+                .collection('users')
+                .limit(100)
+                .get();
+            debugPrint('[UserList] Found ${allUsers.docs.length} total users');
+            
+            // Log first few user emails for debugging
+            for (int i = 0; i < min(5, allUsers.docs.length); i++) {
+              final userData = allUsers.docs[i].data();
+              debugPrint('[UserList] User $i: email="${userData['email']}", uid=${userData['uid']}');
+            }
+          } catch (e) {
+            debugPrint('[UserList] Fallback search error: $e');
+          }
+        }
+        
         setState(() {
-          _errorMessage = "No account found. Ask them to sign up first.";
+          _errorMessage = 'No account found. Ask them to sign up first.';
           _foundUser = null;
           _hasSearched = true;
         });
@@ -92,9 +121,9 @@ final emailErr = InputValidator.validateEmail(email);
         });
       }
     } catch (e) {
-      debugPrint('[UserList] _searchByEmail: ERROR ${e.runtimeType}');
+      debugPrint('[UserList] _searchByEmail: ERROR ${e.runtimeType}: $e');
       setState(() {
-        _errorMessage = "Something went wrong. Please try again.";
+        _errorMessage = 'Search failed: ${e.toString().substring(0, min(100, e.toString().length))}';
         _foundUser = null;
         _hasSearched = true;
       });
@@ -128,7 +157,7 @@ final emailErr = InputValidator.validateEmail(email);
           onPressed: () => Navigator.pop(context),
         ),
         title: Text(
-          "New Chat",
+          'New Chat',
           style: TextStyle(
             color: colors.primaryText,
             fontWeight: FontWeight.w600,
@@ -200,7 +229,7 @@ final emailErr = InputValidator.validateEmail(email);
                         }
                       },
                       decoration: InputDecoration(
-                        hintText: "Enter email address...",
+                        hintText: 'Enter email address...',
                         hintStyle: TextStyle(color: colors.hintText),
                         prefixIcon: Icon(
                           Icons.email_outlined,
@@ -320,7 +349,7 @@ final emailErr = InputValidator.validateEmail(email);
           ),
           const SizedBox(height: 20),
           Text(
-            "Find someone by email",
+            'Find someone by email',
             style: TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.w600,
@@ -329,7 +358,7 @@ final emailErr = InputValidator.validateEmail(email);
           ),
           const SizedBox(height: 8),
           Text(
-            "Type an email above and tap search",
+            'Type an email above and tap search',
             style: TextStyle(fontSize: 13, color: colors.secondaryText),
           ),
         ],
@@ -347,7 +376,7 @@ final emailErr = InputValidator.validateEmail(email);
           Icon(Icons.person_off_outlined, size: 64, color: colors.hintText),
           const SizedBox(height: 16),
           Text(
-            "No account found",
+            'No account found',
             style: TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.w500,
@@ -356,7 +385,7 @@ final emailErr = InputValidator.validateEmail(email);
           ),
           const SizedBox(height: 8),
           Text(
-            "Ask them to sign up first",
+            'Ask them to sign up first',
             style: TextStyle(fontSize: 13, color: colors.hintText),
           ),
         ],
@@ -376,14 +405,14 @@ final emailErr = InputValidator.validateEmail(email);
     // stripInvisible() removes zero-width and invisible characters from
     // Firestore display strings before rendering in UI
     final email = InputValidator.stripInvisible(
-      userData["email"] as String? ?? "Unknown",
+      userData['email'] as String? ?? 'Unknown',
     );
     final name = InputValidator.stripInvisible(
-      userData["name"] as String? ?? email.split("@")[0],
+      userData['name'] as String? ?? email.split('@')[0],
     );
 
     // ✅ Null-safe uid with early return — prevents crash if uid missing
-    final uid = userData["uid"] as String?;
+    final uid = userData['uid'] as String?;
     if (uid == null || uid.trim().isEmpty) return const SizedBox.shrink();
 
     return Padding(
@@ -392,7 +421,7 @@ final emailErr = InputValidator.validateEmail(email);
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            "USER FOUND",
+            'USER FOUND',
             style: TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w700,
@@ -417,7 +446,7 @@ final emailErr = InputValidator.validateEmail(email);
             child: InkWell(
               borderRadius: BorderRadius.circular(16),
               onTap: () {
-                final hasKey = userData["publicKey"] != null;
+                final hasKey = userData['publicKey'] != null;
                 if (!hasKey) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
@@ -433,7 +462,7 @@ final emailErr = InputValidator.validateEmail(email);
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (_) => ChatScreen(receiverId: uid),
+                    builder: (_) => ChatScreenWrapper(receiverId: uid),
                   ),
                 );
               },
@@ -502,7 +531,7 @@ final emailErr = InputValidator.validateEmail(email);
                           ),
                           SizedBox(width: 6),
                           Text(
-                            "Chat",
+                            'Chat',
                             style: TextStyle(
                               color: Colors.white,
                               fontWeight: FontWeight.w600,

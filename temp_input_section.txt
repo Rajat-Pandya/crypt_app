@@ -1,0 +1,137 @@
+          // Message input area with emoji picker
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            color: colors.appBarBg,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Emoji picker widget
+                if (_showEmojiPicker)
+                  SizedBox(
+                    height: 250,
+                    child: EmojiPicker(
+                      onEmojiSelected: (category, emoji) {
+                        debugPrint('[EMOJI_PICKER] Emoji selected: ${emoji.emoji}');
+                        controller.text = controller.text + emoji.emoji;
+                        controller.selection = TextSelection.fromPosition(
+                          TextPosition(offset: controller.text.length),
+                        );
+                      },
+                      config: Config(
+                        height: 256,
+                        checkPlatformCompatibility: true,
+                        emojiViewConfig: EmojiViewConfig(
+                          backgroundColor: colors.appBarBg,
+                          columns: 7,
+                          emojiSizeMax: 28,
+                          verticalSpacing: 0,
+                          horizontalSpacing: 0,
+                          gridPadding: EdgeInsets.zero,
+                          buttonMode: ButtonMode.MATERIAL,
+                        ),
+                        categoryViewConfig: CategoryViewConfig(
+                          backgroundColor: colors.appBarBg,
+                          iconColor: colors.secondaryText,
+                          iconColorSelected: colors.accent,
+                          indicatorColor: colors.accent,
+                        ),
+                        bottomActionBarConfig: BottomActionBarConfig(
+                          backgroundColor: colors.appBarBg,
+                          buttonColor: colors.inputBg,
+                          buttonIconColor: colors.secondaryText,
+                        ),
+                        searchViewConfig: SearchViewConfig(
+                          backgroundColor: colors.appBarBg,
+                          buttonIconColor: colors.secondaryText,
+                          hintText: 'Search emoji...',
+                          hintTextStyle: TextStyle(color: colors.hintText),
+                        ),
+                      ),
+                    ),
+                  ),
+                // Input row with emoji button, text field, and send button
+                Row(
+                  children: [
+                    // Emoji toggle button
+                    GestureDetector(
+                      onTap: () {
+                        debugPrint('[EMOJI_UI] Emoji button tapped');
+                        setState(() {
+                          _showEmojiPicker = !_showEmojiPicker;
+                        });
+                        if (_showEmojiPicker) {
+                          // Hide keyboard when showing emoji picker
+                          FocusScope.of(context).unfocus();
+                        }
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.all(8),
+                        child: Icon(
+                          _showEmojiPicker
+                              ? Icons.keyboard
+                              : Icons.emoji_emotions_outlined,
+                          color: colors.secondaryText,
+                          size: 24,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    // Text input field
+                    Expanded(
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 10,
+                        ),
+                        decoration: BoxDecoration(
+                          color: colors.inputBg,
+                          borderRadius: BorderRadius.circular(30),
+                        ),
+                        child: TextField(
+                          controller: controller,
+                          style: TextStyle(color: colors.primaryText),
+                          onChanged: (value) {
+                            if (!isTyping) {
+                              isTyping = true;
+                              updateTyping(true);
+                            }
+                            typingTimer?.cancel();
+                            typingTimer = Timer(const Duration(seconds: 2), () {
+                              isTyping = false;
+                              updateTyping(false);
+                            });
+                          },
+                          onTap: () {
+                            // Hide emoji picker when tapping text field
+                            if (_showEmojiPicker) {
+                              setState(() => _showEmojiPicker = false);
+                            }
+                          },
+                          decoration: InputDecoration(
+                            hintText: 'Type a message...',
+                            hintStyle: TextStyle(color: colors.hintText),
+                            border: InputBorder.none,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    // Send button
+                    Container(
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: colors.inputBg,
+                      ),
+                      child: IconButton(
+                        icon: Icon(
+                          Icons.send,
+                          color: _keysReady ? colors.accent : colors.hintText,
+                        ),
+                        onPressed: _keysReady ? sendMessage : null,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),

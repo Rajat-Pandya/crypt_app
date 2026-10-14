@@ -5,7 +5,7 @@ class ChatListService {
 
   static String getRoomId(String u1, String u2) {
     final users = [u1, u2]..sort();
-    return users.join("_");
+    return users.join('_');
   }
 
   /// Streams all chat rooms the current user is a member of,
@@ -14,9 +14,9 @@ class ChatListService {
     assert(currentUserId.isNotEmpty, 'currentUserId must not be empty');
 
     return _firestore
-        .collection("chat_rooms")
-        .where("users", arrayContains: currentUserId)
-        .orderBy("lastMessageTime", descending: true)
+        .collection('chat_rooms')
+        .where('users', arrayContains: currentUserId)
+        .orderBy('lastMessageTime', descending: true)
         .snapshots();
   }
 
@@ -87,11 +87,11 @@ class ChatListService {
     assert(currentUserId.isNotEmpty, 'currentUserId must not be empty');
 
     return _firestore
-        .collection("chat_rooms")
+        .collection('chat_rooms')
         .doc(roomId)
-        .collection("messages")
-        .where("timestamp", isGreaterThan: lastSeen)
-        .where("senderId", isNotEqualTo: currentUserId)
+        .collection('messages')
+        .where('timestamp', isGreaterThan: lastSeen)
+        .where('senderId', isNotEqualTo: currentUserId)
         .snapshots()
         .handleError((e) {
           throw e;
@@ -109,6 +109,6 @@ class ChatListService {
   static Stream<DocumentSnapshot> getUserStream(String userId) {
     assert(userId.isNotEmpty, 'userId must not be empty');
 
-    return _firestore.collection("users").doc(userId).snapshots();
+    return _firestore.collection('users').doc(userId).snapshots();
   }
 }

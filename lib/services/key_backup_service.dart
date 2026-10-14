@@ -113,6 +113,11 @@ class KeyBackupService {
   /// returned reliably on a bad password. The old CBC implementation would
   /// silently return corrupt JSON ~1/256 of the time, which then crashed
   /// later when the JSON was parsed.
+  ///
+  /// 🔑 MULTI-DEVICE FIX: Preserves existing device keys before restoring.
+  /// Device B's original keys (used for messages sent TO Device B) are archived
+  /// before restoring Device A's keys. This allows Device B to decrypt messages
+  /// encrypted with its old public key while also being able to read Device A's messages.
   static Future<KeyRestoreResult> restorePrivateKey({
     required User user,
     required String password,
@@ -141,7 +146,34 @@ class KeyBackupService {
         () => _decryptWithPassword(encrypted: backup, password: password),
       );
 
+      // 🔑 MULTI-DEVICE FIX: Archive existing device keys before restoring
+      // This preserves Device B's original keys for decrypting messages sent TO Device B
+      final existingDeviceKey = await _storage.read(key: 'device_private_key');
+      if (existingDeviceKey != null) {
+        // Archive the existing device key with a timestamp
+        final timestamp = DateTime.now().millisecondsSinceEpoch.toString();
+        await _storage.write(
+          key: 'archived_private_key_$timestamp',
+          value: existingDeviceKey,
+        );
+        _dbg('restorePrivateKey: archived existing device key as archived_private_key_$timestamp');
+      }
+
+      // Also check for legacy key and archive it
+      final existingLegacyKey = await _storage.read(key: 'private_key');
+      if (existingLegacyKey != null && existingLegacyKey != privateKeyJson) {
+        final timestamp = DateTime.now().millisecondsSinceEpoch.toString();
+        await _storage.write(
+          key: 'archived_private_key_legacy_$timestamp',
+          value: existingLegacyKey,
+        );
+        _dbg('restorePrivateKey: archived existing legacy key as archived_private_key_legacy_$timestamp');
+      }
+
+      // Store the restored key
       await _storage.write(key: 'private_key', value: privateKeyJson);
+      // Also store as device_private_key for consistency
+      await _storage.write(key: 'device_private_key', value: privateKeyJson);
 
       await _storage.write(key: backupConfirmedKey, value: 'true');
       await _storage.delete(key: backupPendingKey);
@@ -227,10 +259,49 @@ class KeyBackupService {
     _dbg('deleteBackup: removed from Firestore and local flags cleared');
   }
 
+  // Session-level PBKDF2 cache - memory only, cleared on logout
+  static Uint8List? _cachedDerivedKey;
+  static String? _cachedPassword;
+  static Uint8List? _cachedSalt;
+
   static Uint8List _deriveKey(String password, Uint8List salt) {
+    // Check cache first (same session only)
+    if (_cachedDerivedKey != null &&
+        _cachedPassword == password &&
+        _cachedSalt != null &&
+        _listEquals(_cachedSalt!, salt)) {
+      _dbg('PBKDF2 cache hit - reusing derived key');
+      return _cachedDerivedKey!;
+    }
+
+    _dbg('PBKDF2 cache miss - deriving key (600k iterations)');
     final pbkdf2 = PBKDF2KeyDerivator(HMac(SHA256Digest(), 64));
     pbkdf2.init(Pbkdf2Parameters(salt, _pbkdf2Iterations, _aesKeyBytes));
-    return pbkdf2.process(Uint8List.fromList(utf8.encode(password)));
+    final derivedKey = pbkdf2.process(Uint8List.fromList(utf8.encode(password)));
+
+    // Cache in memory only (never persist to disk)
+    _cachedDerivedKey = derivedKey;
+    _cachedPassword = password;
+    _cachedSalt = Uint8List.fromList(salt);
+
+    return derivedKey;
+  }
+
+  static bool _listEquals(Uint8List a, Uint8List b) {
+    if (a.length != b.length) return false;
+    for (int i = 0; i < a.length; i++) {
+      if (a[i] != b[i]) return false;
+    }
+    return true;
+  }
+
+  /// Clears the session-level PBKDF2 cache.
+  /// Call on logout or app termination.
+  static void clearDerivedKeyCache() {
+    _cachedDerivedKey = null;
+    _cachedPassword = null;
+    _cachedSalt = null;
+    _dbg('PBKDF2 cache cleared');
   }
 
   /// Encrypts [plaintext] with [password].
@@ -286,6 +357,30 @@ class KeyBackupService {
   static Uint8List _randomBytes(int count) {
     final rng = Random.secure();
     return Uint8List.fromList(List.generate(count, (_) => rng.nextInt(256)));
+  }
+
+  // 🔑 MULTI-DEVICE: Load archived keys for decrypting old messages
+  /// Returns a list of archived private keys that were preserved during
+  /// key restoration. These keys can be used to decrypt messages that were
+  /// encrypted before device approval.
+  static Future<List<String>> loadArchivedKeys() async {
+    _dbg('loadArchivedKeys: loading archived keys...');
+    final archivedKeys = <String>[];
+    
+    try {
+      final allKeys = await _storage.readAll();
+      for (final entry in allKeys.entries) {
+        if (entry.key.startsWith('archived_private_key_')) {
+          archivedKeys.add(entry.value);
+          _dbg('loadArchivedKeys: found ${entry.key}');
+        }
+      }
+      _dbg('loadArchivedKeys: loaded ${archivedKeys.length} archived keys');
+    } catch (e) {
+      _dbg('loadArchivedKeys: error loading archived keys - $e');
+    }
+    
+    return archivedKeys;
   }
 }
 

@@ -4,5 +4,9 @@
     "location": "asia-south1",
     "rules": "firestore.rules",
     "indexes": "firestore.indexes.json"
+  },
+  "storage": {
+    "rules": "storage.rules",
+    "bucket": "crypt-app-e8fd5.firebasestorage.app"
   }
 }

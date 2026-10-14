@@ -1,8 +1,8 @@
 import 'dart:convert';
 import 'dart:isolate';
 import 'dart:math';
-import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart';
 import 'package:pointycastle/api.dart';
 import 'package:pointycastle/block/aes.dart';
 import 'package:pointycastle/block/modes/cbc.dart';
@@ -49,15 +49,19 @@ class DecryptionFailedException implements Exception {
 // message encrypt/decrypt. Now runs in ~1-2ms on background isolate.
 
 Map<String, String> _aesEncryptIsolate(String text) {
+  debugPrint('[EncryptIsolate] START - input length: ${text.length}');
   if (text.isEmpty) {
+    debugPrint('[EncryptIsolate] ERROR - Message cannot be empty');
     throw const EncryptionFormatException('Message cannot be empty');
   }
 
   final random = Random.secure();
   final keyBytes = List<int>.generate(32, (_) => random.nextInt(256));
   final key = base64Encode(keyBytes);
+  debugPrint('[EncryptIsolate] Generated AES key: ${key.substring(0, 10)}... (${keyBytes.length} bytes)');
 
   final iv = Uint8List.fromList(List.generate(16, (_) => random.nextInt(256)));
+  debugPrint('[EncryptIsolate] Generated IV: ${base64Encode(iv).substring(0, 10)}... (16 bytes)');
 
   final keyBytesDecoded = base64Decode(key);
   final cipher = PaddedBlockCipherImpl(
@@ -73,14 +77,23 @@ Map<String, String> _aesEncryptIsolate(String text) {
   );
 
   final input = Uint8List.fromList(utf8.encode(text));
+  debugPrint('[EncryptIsolate] Input bytes: ${input.length}');
   final output = cipher.process(input);
+  debugPrint('[EncryptIsolate] Output ciphertext: ${output.length} bytes');
 
+  debugPrint('[EncryptIsolate] SUCCESS');
   return {'text': base64Encode(output), 'key': key, 'iv': base64Encode(iv)};
 }
 
 String _aesDecryptIsolate(_DecryptArgs args) {
+  debugPrint('[DecryptIsolate] START');
+  debugPrint('[DecryptIsolate] Key length: ${args.key.length} chars');
+  debugPrint('[DecryptIsolate] IV length: ${args.ivBase64.length} chars');
+  debugPrint('[DecryptIsolate] Ciphertext length: ${args.encryptedText.length} chars');
+  
   final keyBytes = base64Decode(args.key);
   final iv = base64Decode(args.ivBase64);
+  debugPrint('[DecryptIsolate] Decoded key: ${keyBytes.length} bytes, IV: ${iv.length} bytes');
 
   final cipher = PaddedBlockCipherImpl(
     PKCS7Padding(),
@@ -95,8 +108,11 @@ String _aesDecryptIsolate(_DecryptArgs args) {
   );
 
   final input = base64Decode(args.encryptedText);
+  debugPrint('[DecryptIsolate] Input: ${input.length} bytes');
   final output = cipher.process(input);
-  return utf8.decode(output);
+  final result = utf8.decode(output);
+  debugPrint('[DecryptIsolate] SUCCESS - output: ${result.length} chars');
+  return result;
 }
 
 class _DecryptArgs {
@@ -199,4 +215,76 @@ class EncryptionHelper {
       throw DecryptionFailedException('Decryption failed', cause: e);
     }
   }
+
+  /// Encrypts [text] with AES-256-CBC using the provided [key] and [iv].
+  ///
+  /// Runs on a BACKGROUND ISOLATE — does NOT block the main thread.
+  ///
+  /// Returns a map with two entries:
+  ///   • "text" — base64-encoded ciphertext
+  ///   • "iv"   — base64-encoded 16-byte IV (same as input)
+  ///
+  /// Throws [EncryptionFormatException] if key or IV dimensions are wrong.
+  static Future<Map<String, String>> encryptWithKey(
+    String text,
+    String key,
+    String iv,
+  ) async {
+    _decodeAesKey(key);
+    _decodeIv(iv);
+
+    try {
+      final result = await Isolate.run(
+        () => _aesEncryptWithKeyIsolate(_EncryptWithKeyArgs(text, key, iv)),
+      );
+      _dbg('encryptWithKey: output ${result["text"]!.length} bytes');
+      return result;
+    } on EncryptionFormatException {
+      rethrow;
+    } catch (e) {
+      throw DecryptionFailedException('Encryption failed', cause: e);
+    }
+  }
+}
+
+/// Arguments for encrypting with a specific key and IV
+class _EncryptWithKeyArgs {
+  final String text;
+  final String key;
+  final String iv;
+
+  const _EncryptWithKeyArgs(this.text, this.key, this.iv);
+}
+
+/// Encrypts text with a specific key and IV (runs on isolate)
+Map<String, String> _aesEncryptWithKeyIsolate(_EncryptWithKeyArgs args) {
+  debugPrint('[EncryptWithKeyIsolate] START - input length: ${args.text.length}');
+  if (args.text.isEmpty) {
+    debugPrint('[EncryptWithKeyIsolate] ERROR - Message cannot be empty');
+    throw const EncryptionFormatException('Message cannot be empty');
+  }
+
+  final keyBytes = base64Decode(args.key);
+  final ivBytes = base64Decode(args.iv);
+  debugPrint('[EncryptWithKeyIsolate] Using provided key: ${keyBytes.length} bytes, IV: ${ivBytes.length} bytes');
+
+  final cipher = PaddedBlockCipherImpl(
+    PKCS7Padding(),
+    CBCBlockCipher(AESEngine()),
+  );
+  cipher.init(
+    true,
+    PaddedBlockCipherParameters(
+      ParametersWithIV(KeyParameter(keyBytes), ivBytes),
+      null,
+    ),
+  );
+
+  final input = Uint8List.fromList(utf8.encode(args.text));
+  debugPrint('[EncryptWithKeyIsolate] Input bytes: ${input.length}');
+  final output = cipher.process(input);
+  debugPrint('[EncryptWithKeyIsolate] Output ciphertext: ${output.length} bytes');
+
+  debugPrint('[EncryptWithKeyIsolate] SUCCESS');
+  return {'text': base64Encode(output), 'iv': args.iv};
 }

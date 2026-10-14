@@ -83,7 +83,7 @@ class _VerificationScreenState extends State<VerificationScreen> {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: const Text("✅ Email verified successfully!"),
+              content: const Text('✅ Email verified successfully!'),
               backgroundColor: Colors.green,
               behavior: SnackBarBehavior.floating,
               shape: RoundedRectangleBorder(
@@ -124,12 +124,12 @@ class _VerificationScreenState extends State<VerificationScreen> {
     try {
       await AuthService.resendVerificationEmail();
       if (!mounted) return;
-      _showSnack("✅ Verification email sent! Check your inbox", Colors.green);
+      _showSnack('✅ Verification email sent! Check your inbox', Colors.green);
     } catch (e) {
       // ✅ Show generic error — not e.toString()
       _dbg('resend failed — ${e.runtimeType}');
       if (!mounted) return;
-      _showSnack("❌ Failed to resend. Please try again.", Colors.red);
+      _showSnack('❌ Failed to resend. Please try again.', Colors.red);
     } finally {
       if (mounted) setState(() => isResending = false);
     }
@@ -187,7 +187,7 @@ class _VerificationScreenState extends State<VerificationScreen> {
           // Previously: const TextStyle(fontWeight: FontWeight.w600)
           // Missing color caused wrong title color in dark/custom themes
           title: Text(
-            isVerified ? "Email Verified! 🎉" : "Verify Your Email 📧",
+            isVerified ? 'Email Verified! 🎉' : 'Verify Your Email 📧',
             style: TextStyle(
               fontWeight: FontWeight.w600,
               color: colors.primaryText, // ✅ themed
@@ -210,7 +210,7 @@ class _VerificationScreenState extends State<VerificationScreen> {
                   IconButton(
                     icon: Icon(Icons.logout, color: colors.primaryText),
                     onPressed: _logout,
-                    tooltip: "Logout",
+                    tooltip: 'Logout',
                   ),
                 ],
         ),
@@ -242,7 +242,7 @@ class _VerificationScreenState extends State<VerificationScreen> {
 
                 // ── Title ─────────────────────────────────────────────
                 Text(
-                  isVerified ? "Email Verified!" : "Check Your Email",
+                  isVerified ? 'Email Verified!' : 'Check Your Email',
                   style: TextStyle(
                     fontSize: 28,
                     fontWeight: FontWeight.bold,
@@ -271,7 +271,7 @@ class _VerificationScreenState extends State<VerificationScreen> {
                     ),
                   ),
                   child: Text(
-                    widget.user.email ?? "your email",
+                    widget.user.email ?? 'your email',
                     style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w600,
@@ -311,7 +311,7 @@ class _VerificationScreenState extends State<VerificationScreen> {
     return Column(
       children: [
         Text(
-          "🎉 Your email has been verified successfully!",
+          '🎉 Your email has been verified successfully!',
           style: TextStyle(
             fontSize: 16,
             color: Colors.green.shade700,
@@ -322,7 +322,7 @@ class _VerificationScreenState extends State<VerificationScreen> {
         ),
         const SizedBox(height: 12),
         Text(
-          "Redirecting to login...",
+          'Redirecting to login...',
           style: TextStyle(
             fontSize: 14,
             color: colors.secondaryText,
@@ -344,8 +344,8 @@ class _VerificationScreenState extends State<VerificationScreen> {
     return Column(
       children: [
         Text(
-          "We sent a verification link to your email.\n\n"
-          "Click the link to verify your account and get access to the app.",
+          'We sent a verification link to your email.\n\n'
+          'Click the link to verify your account and get access to the app.',
           style: TextStyle(
             fontSize: 16,
             color: colors.secondaryText,
@@ -366,7 +366,7 @@ class _VerificationScreenState extends State<VerificationScreen> {
               ),
               const SizedBox(height: 12),
               Text(
-                "Checking verification...",
+                'Checking verification...',
                 style: TextStyle(fontSize: 14, color: colors.secondaryText),
               ),
             ],
@@ -375,7 +375,7 @@ class _VerificationScreenState extends State<VerificationScreen> {
           Column(
             children: [
               Text(
-                "⏳ Waiting for verification...",
+                '⏳ Waiting for verification...',
                 style: TextStyle(
                   fontSize: 14,
                   color: colors.secondaryText,
@@ -384,7 +384,7 @@ class _VerificationScreenState extends State<VerificationScreen> {
               ),
               const SizedBox(height: 4),
               Text(
-                "Auto-checking every 3 seconds",
+                'Auto-checking every 3 seconds',
                 style: TextStyle(
                   fontSize: 12,
                   color: colors.secondaryText,
@@ -417,7 +417,7 @@ class _VerificationScreenState extends State<VerificationScreen> {
               ),
               const SizedBox(width: 8),
               Text(
-                "Troubleshooting",
+                'Troubleshooting',
                 style: TextStyle(
                   fontWeight: FontWeight.w600,
                   color: Colors.orange.shade700,
@@ -429,9 +429,9 @@ class _VerificationScreenState extends State<VerificationScreen> {
           const SizedBox(height: 12),
           Text(
             "💡 Didn't receive the email?\n"
-            "• Check your spam/junk folder\n"
-            "• Tap \"Resend Email\" below\n"
-            "• Wait a few moments",
+            '• Check your spam/junk folder\n'
+            '• Tap "Resend Email" below\n'
+            '• Wait a few moments',
             style: TextStyle(
               fontSize: 13,
               color: Colors.orange.shade700,
@@ -458,7 +458,7 @@ class _VerificationScreenState extends State<VerificationScreen> {
                 ),
               )
             : const Icon(Icons.mail_outline),
-        label: Text(isResending ? "Sending..." : "Resend Email"),
+        label: Text(isResending ? 'Sending...' : 'Resend Email'),
         style: ElevatedButton.styleFrom(
           backgroundColor: Colors.orange,
           foregroundColor: Colors.white,
@@ -483,7 +483,7 @@ class _VerificationScreenState extends State<VerificationScreen> {
                 child: CircularProgressIndicator(strokeWidth: 2),
               )
             : const Icon(Icons.refresh),
-        label: const Text("Check Now"),
+        label: const Text('Check Now'),
         style: OutlinedButton.styleFrom(
           foregroundColor: colors.accent,
           side: BorderSide(color: colors.accent),

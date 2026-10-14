@@ -33,10 +33,23 @@ service cloud.firestore {
       allow read: if isAuthenticated();
 
       // Allow writing only to own user document with validation
+      // CRITICAL: Allows encryption key fields for setupEncryption()
       allow create, update: if isOwner(userId) &&
-        request.resource.data.keys().hasAll(['name', 'email']) &&
-        request.resource.data.name is string &&
-        request.resource.data.name.size() <= 100;
+        (
+          // Basic profile fields
+          (request.resource.data.keys().hasAll(['name', 'email']) &&
+           request.resource.data.name is string &&
+           request.resource.data.name.size() <= 100) ||
+          // Encryption fields - allow updates to public key
+          (request.resource.data.publicKey is map ||
+           request.resource.data.publicKeyVersion is string ||
+           request.resource.data.keyUpdatedAt is timestamp ||
+           request.resource.data.encryptedPrivateKeyBackup is string ||
+           request.resource.data.isOnline is bool ||
+           request.resource.data.lastSeen is timestamp ||
+           request.resource.data.emailVerified is bool ||
+           request.resource.data.playerId is string)
+        );
 
       // No deletion allowed
       allow delete: if false;
@@ -44,25 +57,58 @@ service cloud.firestore {
 
     // ── Chat Rooms ─────────────────────────────────────────────────────────
     match /chat_rooms/{roomId} {
+      // CRITICAL FIX: Allow reading room if user is in users array OR room doesn't exist yet
+      // This allows creating/joining new chats before room exists
       allow read: if isAuthenticated() &&
         (resource == null || request.auth.uid in resource.data.users);
 
+      // CRITICAL FIX: Allow create if user is one of the two participants
+      // Uses either 'users' or 'participants' field for compatibility
       allow create: if isAuthenticated() &&
-        request.auth.uid in request.resource.data.users &&
-        request.resource.data.users.size() == 2;
+        (request.auth.uid in request.resource.data.users || 
+         request.auth.uid in request.resource.data.participants) &&
+        (request.resource.data.users.size() == 2 || 
+         request.resource.data.participants.size() == 2);
 
+      // Allow update if user is a participant
       allow update: if isAuthenticated() &&
-        request.auth.uid in resource.data.users;
+        (request.auth.uid in resource.data.users || 
+         request.auth.uid in resource.data.participants);
 
       allow delete: if isAuthenticated() &&
-        request.auth.uid in resource.data.users;
+        (request.auth.uid in resource.data.users || 
+         request.auth.uid in resource.data.participants);
 
       // ── Messages sub-collection ─────────────────────────────────────────
+      // CRITICAL FIX: Check room membership without requiring room to exist first
+      // For new chats: allow if user would be a participant (based on roomId)
       match /messages/{messageId} {
-        allow read: if isAuthenticated() && isRoomMember(roomId);
+        // Helper to check if user is participant in this room
+        function isParticipantInRoom() {
+          // Extract user IDs from roomId (format: uid1_uid2 where uid1 < uid2)
+          let roomUsers = roomId.split('_');
+          return request.auth.uid in roomUsers;
+        }
+        
+        // Helper to check room membership (handles non-existent rooms for new chats)
+        function canAccessMessages() {
+          // Check if user is in room's users array (room exists)
+          let room = getAfter(/databases/$(database)/documents/chat_rooms/$(roomId));
+          let inRoom = request.auth.uid in room.data.users || 
+                       request.auth.uid in room.data.participants;
+          // Also allow if room doesn't exist yet (new chat) and user would be participant
+          let isNewChatParticipant = isParticipantInRoom();
+          return inRoom || isNewChatParticipant;
+        }
+        
+        // Allow read if: room exists and user is member, OR room is new and user is participant
+        allow read: if isAuthenticated() && 
+          (canAccessMessages() || isParticipantInRoom());
 
-        // Only the sender can create a message with validation
+        // CRITICAL FIX: Allow creating messages in non-existent rooms
+        // User must be authenticated and match roomId pattern (uid1_uid2)
         allow create: if isAuthenticated() &&
+          isParticipantInRoom() &&
           request.resource.data.senderId == request.auth.uid &&
           request.resource.data.keys().hasAll(['text', 'senderId', 'receiverId']);
 
@@ -95,6 +141,82 @@ service cloud.firestore {
 
         allow delete: if isAuthenticated() && isRoomMember(roomId);
       }
+    }
+
+    // ── User Devices (Multi-device registry) ───────────────────────────────
+    // Each device is registered under users/{uid}/devices/{deviceId}
+    // STRICT: Users can ONLY access their own devices
+    // TRUST: Only trusted devices can be used for encryption
+    match /users/{userId}/devices/{deviceId} {
+      // Allow read only if authenticated user is the owner
+      allow read: if isOwner(userId);
+
+      // Allow create if user is owner and deviceId matches (prevents spoofing)
+      // New devices must start as untrusted (trusted == false or null)
+      allow create: if isOwner(userId) &&
+        request.resource.data.deviceId == deviceId &&
+        (request.resource.data.trusted == false || request.resource.data.trusted == null);
+
+      // Allow update if user is owner and deviceId matches existing
+      // Trust can only change from false to true if approvedBy is set and not self
+      allow update: if isOwner(userId) &&
+        request.resource.data.deviceId == resource.data.deviceId &&
+        // Prevent self-approval: if setting trusted=true, require approvedBy from another device
+        (
+          // If not changing trusted status, allow
+          !(request.resource.data.trusted == true && resource.data.trusted == false) ||
+          // OR if changing to trusted, must have approvedBy set and not be self
+          (
+            request.resource.data.approvedBy is string &&
+            request.resource.data.approvedBy != deviceId &&
+            request.resource.data.approvedBy != ""
+          )
+        );
+
+      // Allow delete only by owner
+      allow delete: if isOwner(userId);
+    }
+
+    // ── Device OTPs (For new device approval) ─────────────────────────────
+    // Temporary OTPs stored at users/{uid}/device_otps/{otpId}
+    // SECURITY: OTPs are hashed before storage, expire after 10 minutes
+    match /users/{userId}/device_otps/{otpId} {
+      // Only owner can read/write OTPs
+      allow read, write: if isOwner(userId);
+
+      // OTP can be deleted by owner
+      allow delete: if isOwner(userId);
+    }
+
+    // ── Device Approvals (Pending approval requests) ───────────────────────
+    // Approval requests stored at users/{uid}/device_approvals/{approvalId}
+    // Used when new device requests approval from existing devices
+    match /users/{userId}/device_approvals/{approvalId} {
+      // Only owner can read approvals
+      allow read: if isOwner(userId);
+
+      // Only owner can create/update approval requests
+      allow create, update: if isOwner(userId) &&
+        request.resource.data.keys().hasAll(['targetDeviceId', 'status', 'createdAt']);
+
+      // Only owner can delete
+      allow delete: if isOwner(userId);
+    }
+
+    // ── Device Sessions (Session recovery and validation) ──────────────────
+    // Session metadata stored at users/{uid}/device_sessions/{deviceId}
+    // Used for session recovery, sync, and replay protection
+    match /users/{userId}/device_sessions/{sessionId} {
+      // Owner can read sessions
+      allow read: if isOwner(userId);
+
+      // Owner can create/update sessions
+      // Sessions track sequence numbers for replay protection
+      allow create, update: if isOwner(userId) &&
+        request.resource.data.keys().hasAll(['sessionId', 'deviceId', 'createdAt', 'lastValidatedAt', 'sequenceNumber']);
+
+      // Owner can delete sessions
+      allow delete: if isOwner(userId);
     }
   }
 }
